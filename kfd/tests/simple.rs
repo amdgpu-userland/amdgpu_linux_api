@@ -1,4 +1,10 @@
-use std::{io::stdin, os::fd::AsRawFd};
+use std::{
+    fs::File,
+    io::stdin,
+    os::fd::{AsFd, AsRawFd},
+};
+
+use amdkfd::{Kfd, KfdIoctlAcquireVmArgs, KfdProcessDeviceApertures, amdkfd_ioc_acquire_vm};
 
 #[test]
 fn opening_kfd() {
@@ -24,14 +30,67 @@ fn creating_small_sdma_queue() {
         ring_size: 1024,
         ..Default::default()
     };
+    let fd = kfd.as_fd();
     let res = unsafe {
         libc::ioctl(
-            kfd.file.as_raw_fd(),
+            fd.as_raw_fd(),
             amdkfd::AMDKFD_IOC_CREATE_QUEUE,
             &raw mut out,
         )
     };
     println!("{res}, errno: {}", std::io::Error::last_os_error());
     let mut _line = String::new();
-    stdin().read_line(&mut _line);
+    let _ = stdin().read_line(&mut _line);
+}
+
+/// Acquire vm modifies state for the whole process which makes it hard to test
+/// Tests the ioctl is invoked, what it returns,
+/// how it reacts to multiple calls
+#[test]
+fn acquire_vm() {
+    let kfd = Kfd::open().unwrap();
+    let mut apertures = [KfdProcessDeviceApertures::default(); 1];
+    kfd.apertures(&mut apertures).unwrap();
+    let fd = kfd.as_fd();
+    let drm_file = File::open("/dev/dri/renderD128").unwrap();
+    let drm_fd = drm_file.as_fd();
+    let gpu_id = apertures[0].gpu_id;
+    // println!("before first call: {apertures:#?}");
+    // let mut _line = String::new();
+    // let _ = stdin().read_line(&mut _line);
+    let sth = amdkfd_ioc_acquire_vm(
+        fd.as_raw_fd(),
+        KfdIoctlAcquireVmArgs {
+            drm_fd: drm_fd.as_raw_fd() as u32, // valid fd is positive
+            gpu_id,
+        },
+    );
+    //println!("first time: {sth:?}");
+    // let mut _line = String::new();
+    // let _ = stdin().read_line(&mut _line);
+    assert!(sth.is_ok());
+    let sth = amdkfd_ioc_acquire_vm(
+        fd.as_raw_fd(),
+        KfdIoctlAcquireVmArgs {
+            drm_fd: drm_fd.as_raw_fd() as u32, // valid fd is positive
+            gpu_id,
+        },
+    );
+    assert!(sth.is_ok());
+    // println!("second time: {sth:?}");
+    // let mut _line = String::new();
+    // let _ = stdin().read_line(&mut _line);
+    // println!("releasing resources");
+    let drm_file = File::open("/dev/dri/renderD128").unwrap();
+    let drm_fd = drm_file.as_fd();
+    let sth = amdkfd_ioc_acquire_vm(
+        fd.as_raw_fd(),
+        KfdIoctlAcquireVmArgs {
+            drm_fd: drm_fd.as_raw_fd() as u32, // valid fd is positive
+            gpu_id,
+        },
+    );
+    assert!(sth.is_err());
+    drop(drm_file);
+    drop(kfd);
 }

@@ -14,3 +14,9 @@ include file dependencies are.
 
 ## Why not to use existing C libraries?
 Because we can.
+
+### Some tests are design to be run alone and are interactive
+Example 
+```sh
+cargo test calling_acquire_vm_twice_the_same_file -- --no-capture
+```

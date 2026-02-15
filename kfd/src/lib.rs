@@ -1,4 +1,7 @@
-use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
+use std::{
+    io,
+    os::fd::{AsFd, AsRawFd, BorrowedFd},
+};
 
 use crate::ring_buffer::RingBuffer;
 
@@ -7,7 +10,7 @@ pub mod ring_buffer;
 pub const KFD_FILE_PATH: &str = "/dev/kfd";
 
 pub struct Kfd {
-    pub file: std::fs::File,
+    file: std::fs::File,
     /// We can cache the result, because the module cannot be unloaded
     /// while the kfd file is still in use
     version: Version,
@@ -35,6 +38,28 @@ impl Kfd {
         //     id: res.queue_id,
         //     kfd,
         // })
+    }
+
+    pub fn as_fd(&self) -> BorrowedFd<'_> {
+        self.file.as_fd()
+    }
+
+    /// Please call with relatively small array.
+    /// For one gpu 1 should be enough
+    /// Old kfd limit was 7
+    pub fn apertures(&self, buf: &mut [KfdProcessDeviceApertures]) -> io::Result<usize> {
+        let Ok(len) = u32::try_from(buf.len()) else {
+            panic!("Why do you want over u32::MAX gpus?")
+        };
+        let res = amdkfd_ioc_get_process_apertures_new(
+            self.file.as_raw_fd(),
+            KfdIoctlGetProcessAperturesNewArgs {
+                kfd_process_device_apertures_ptr: buf.as_mut_ptr(),
+                num_of_nodes: len,
+                _pad: 0,
+            },
+        )?;
+        Ok(res.num_of_nodes as usize)
     }
 }
 
@@ -141,4 +166,62 @@ fn amdkfd_ioc_destroy_queue(fd: libc::c_int, queue_id: u32) -> i32 {
     let args = KfdIoctlDestroyQueueArgs { queue_id, pad: 0 };
 
     unsafe { libc::ioctl(fd, AMDKFD_IOC_DESTROY_QUEUE, &raw const args) }
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct KfdIoctlAcquireVmArgs {
+    pub drm_fd: u32,
+    pub gpu_id: u32,
+}
+const AMDKFD_IOC_ACQUIRE_VM: libc::Ioctl =
+    libc::_IOW::<KfdIoctlAcquireVmArgs>(AMDKFD_IOCTL_BASE, 0x15);
+pub fn amdkfd_ioc_acquire_vm(fd: libc::c_int, args: KfdIoctlAcquireVmArgs) -> std::io::Result<()> {
+    let res = unsafe { libc::ioctl(fd, AMDKFD_IOC_ACQUIRE_VM, &raw const args) };
+    if res != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct KfdProcessDeviceApertures {
+    pub lds_base: u64,      /* from KFD */
+    pub lds_limit: u64,     /* from KFD */
+    pub scratch_base: u64,  /* from KFD */
+    pub scratch_limit: u64, /* from KFD */
+    pub gpuvm_base: u64,    /* from KFD */
+    pub gpuvm_limit: u64,   /* from KFD */
+    pub gpu_id: u32,        /* from KFD */
+    pub _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+pub struct KfdIoctlGetProcessAperturesNewArgs {
+    /* User allocated. Pointer to struct kfd_process_device_apertures
+     * filled in by Kernel
+     */
+    pub kfd_process_device_apertures_ptr: *mut KfdProcessDeviceApertures,
+    /* to KFD - indicates amount of memory present in
+     *  kfd_process_device_apertures_ptr
+     * from KFD - Number of entries filled by KFD.
+     */
+    pub num_of_nodes: u32,
+    pub _pad: u32,
+}
+
+const AMDKFD_IOC_GET_PROCESS_APERTURES_NEW: libc::Ioctl =
+    libc::_IOWR::<KfdIoctlGetProcessAperturesNewArgs>(AMDKFD_IOCTL_BASE, 0x14);
+
+pub fn amdkfd_ioc_get_process_apertures_new(
+    fd: libc::c_int,
+    mut args: KfdIoctlGetProcessAperturesNewArgs,
+) -> io::Result<KfdIoctlGetProcessAperturesNewArgs> {
+    let res = unsafe { libc::ioctl(fd, AMDKFD_IOC_GET_PROCESS_APERTURES_NEW, &raw mut args) };
+    if res != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(args)
 }
