@@ -1,5 +1,3 @@
-use std::pin::Pin;
-
 /// Pinned memory, that is written to by the userspace and read by the kernel.
 /// The kernel always reads (shared ref) the range from rptr to wptr
 /// The user can write (mut ref) from wptr to rptr wrapping around size.
