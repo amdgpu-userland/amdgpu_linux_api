@@ -5,7 +5,6 @@ use std::{
 };
 
 pub mod ioctl;
-pub mod ring_buffer;
 
 pub const KFD_FILE_PATH: &str = "/dev/kfd";
 
@@ -179,7 +178,7 @@ impl<'kfd> KfdNode<'kfd> {
         (self,)
     }
 
-    /// Get how many bytes you should be able to allocate with [crate::KfdNode::alloc_memory_of_gpu].
+    /// Get how many bytes you should be able to allocate with alloc_memory_of_gpu.
     pub fn available_memory(self) -> Result<(Self, u64), AvailableMemoryError> {
         let mut args = ioctl::KfdIoctlGetAvailableMemoryArgs {
             gpu_id: self.gpu_id,

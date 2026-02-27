@@ -1,58 +1,32 @@
 const AMDKFD_IOCTL_BASE: u32 = 'K' as u32;
-pub type Errno = libc::c_int;
 
+pub type Errno = libc::c_int;
 pub type QueueId = u32;
 pub type GpuId = u32;
 pub type MemoryHandle = u64;
 pub type AllocMemFlag = u32;
 
 macro_rules! define_amdkfd_ioctl {
-    ($(#[$meta:meta])* $fn_name:ident, $args_ty:ty, $num:literal, RW) => {
-        $(#[$meta])*
-        pub unsafe fn $fn_name(fd: libc::c_int, args: &mut $args_ty) -> Result<(), Errno> {
-            let ptr: *mut $args_ty = args;
-            let res =
-                unsafe { libc::ioctl(fd, libc::_IOWR::<$args_ty>(AMDKFD_IOCTL_BASE, $num), ptr) };
-            if res != 0 {
-                return Err( unsafe {* libc::__errno_location()});
-            }
-            Ok(())
+            ($(#[$meta:meta])* $fn_name:ident, $args_ty:ty, $num:literal, $ioctl_direction:tt) => {
+                define_ioctl!(
+                    $(#[$meta])*
+                    $fn_name,
+                    $args_ty,
+                    $num,
+                    AMDKFD_IOCTL_BASE,
+                    $ioctl_direction
+                );
+            };
         }
-    };
-    ($(#[$meta:meta])* $fn_name:ident, $args_ty:ty, $num:literal, R) => {
-        $(#[$meta])*
-        pub unsafe fn $fn_name(fd: libc::c_int, args: &mut $args_ty) -> Result<(), Errno> {
-            let ptr: *mut $args_ty = args;
-            let res =
-                unsafe { libc::ioctl(fd, libc::_IOR::<$args_ty>(AMDKFD_IOCTL_BASE, $num), ptr) };
-            if res != 0 {
-                return Err( unsafe {* libc::__errno_location()});
-            }
-            Ok(())
-        }
-    };
-    ($(#[$meta:meta])* $fn_name:ident, $args_ty:ty, $num:literal, W) => {
-        $(#[$meta])*
-        pub unsafe fn $fn_name(fd: libc::c_int, args: &mut $args_ty) -> Result<(), Errno> {
-            let ptr: *mut $args_ty = args;
-            let res =
-                unsafe { libc::ioctl(fd, libc::_IOW::<$args_ty>(AMDKFD_IOCTL_BASE, $num), ptr) };
-            if res != 0 {
-                return Err( unsafe {* libc::__errno_location()});
-            }
-            Ok(())
-        }
-    };
-}
 
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct Version {
-    pub major_version: u32,
-    pub minor_version: u32,
+    pub major: u32,
+    pub minor: u32,
 }
 
-define_amdkfd_ioctl!(amdkfd_ioctl_get_version, Version, 0x01, R);
+define_amdkfd_ioctl!(amdkfd_ioctl_get_version, Version, 0x1, R);
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -64,7 +38,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_destroy_queue,
     KfdIoctlDestroyQueueArgs,
     0x3,
-    RW
+    WR
 );
 #[repr(u32)]
 pub enum QueueType {
@@ -102,7 +76,7 @@ pub const KFD_MAX_QUEUE_PERCENTAGE: u32 = 100;
 pub const KFD_MAX_QUEUE_PRIORITY: u32 = 15;
 pub const KFD_MIN_QUEUE_RING_SIZE: u32 = 1024;
 
-define_amdkfd_ioctl!(amdkfd_ioctl_create_queue, KfdIoctlCreateQueueArgs, 0x02, RW);
+define_amdkfd_ioctl!(amdkfd_ioctl_create_queue, KfdIoctlCreateQueueArgs, 0x02, WR);
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -172,7 +146,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_get_process_apertures_new,
     KfdIoctlGetProcessAperturesNewArgs,
     0x14,
-    RW
+    WR
 );
 
 #[repr(C)]
@@ -187,7 +161,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_get_available_memory,
     KfdIoctlGetAvailableMemoryArgs,
     0x23,
-    RW
+    WR
 );
 
 #[repr(C)]
@@ -201,7 +175,7 @@ define_amdkfd_ioctl!(
     amdkfd_iotctl_runtime_enable,
     KfdIoctlRuntimeEnableArgs,
     0x25,
-    RW
+    WR
 );
 
 #[repr(C)]
@@ -241,7 +215,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_alloc_memory_of_gpu,
     KfdIoctlAllocMemoryOfGpuArgs,
     0x16,
-    RW
+    WR
 );
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -267,7 +241,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_map_memory_to_gpu,
     KfdIoctlMapMemoryToGpuArgs,
     0x18,
-    RW
+    WR
 );
 
 #[repr(C)]
@@ -282,7 +256,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_unmap_memory_from_gpu,
     KfdIoctlUnmapMemoryFromGpuArgs,
     0x19,
-    RW
+    WR
 );
 
 #[repr(C)]
@@ -301,7 +275,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_get_dmabuf_info,
     KfdIoctlGetDmabufInfoArgs,
     0x1C,
-    RW
+    WR
 );
 
 #[repr(C)]
@@ -316,7 +290,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_import_dmabuf,
     KfdIoctlImportDmabufArgs,
     0x1D,
-    RW
+    WR
 );
 
 #[repr(C)]
@@ -330,5 +304,5 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_export_dmabuf,
     KfdIoctlExportDmabufArgs,
     0x24,
-    RW
+    WR
 );
