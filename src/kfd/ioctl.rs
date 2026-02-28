@@ -1,3 +1,5 @@
+use std::os::fd::RawFd;
+
 const AMDKFD_IOCTL_BASE: u32 = 'K' as u32;
 
 pub type Errno = libc::c_int;
@@ -21,12 +23,13 @@ macro_rules! define_amdkfd_ioctl {
 
 #[repr(C)]
 #[derive(Debug, Default)]
-pub struct Version {
+pub struct KfdVersion {
     pub major: u32,
     pub minor: u32,
 }
+assert_layout!(KfdVersion, size = 8, align = 4);
 
-define_amdkfd_ioctl!(amdkfd_ioctl_get_version, Version, 0x1, R);
+define_amdkfd_ioctl!(amdkfd_ioctl_get_version, KfdVersion, 0x1, R);
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -34,6 +37,7 @@ pub struct KfdIoctlDestroyQueueArgs {
     pub queue_id: QueueId, /* to KFD */
     pub pad: u32,
 }
+assert_layout!(KfdIoctlDestroyQueueArgs, size = 8, align = 4);
 define_amdkfd_ioctl!(
     amdkfd_ioctl_destroy_queue,
     KfdIoctlDestroyQueueArgs,
@@ -72,6 +76,7 @@ pub struct KfdIoctlCreateQueueArgs {
     pub sdma_engine_id: u32,           /* to KFD */
     pub pad: u32,
 }
+assert_layout!(KfdIoctlCreateQueueArgs, size = 96, align = 8);
 pub const KFD_MAX_QUEUE_PERCENTAGE: u32 = 100;
 pub const KFD_MAX_QUEUE_PRIORITY: u32 = 15;
 pub const KFD_MIN_QUEUE_RING_SIZE: u32 = 1024;
@@ -81,9 +86,10 @@ define_amdkfd_ioctl!(amdkfd_ioctl_create_queue, KfdIoctlCreateQueueArgs, 0x02, W
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlAcquireVmArgs {
-    pub drm_fd: u32,
+    pub drm_fd: RawFd,
     pub gpu_id: GpuId,
 }
+assert_layout!(KfdIoctlAcquireVmArgs, size = 8, align = 4);
 define_amdkfd_ioctl!(
     /// Returns:
     /// * EINVAL - if drm_fd is not a valid fd
@@ -106,6 +112,7 @@ pub struct KfdProcessDeviceApertures {
     pub gpu_id: GpuId,      /* from KFD */
     pub _pad: u32,
 }
+assert_layout!(KfdProcessDeviceApertures, size = 56, align = 8);
 
 impl std::fmt::Debug for KfdProcessDeviceApertures {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -132,6 +139,7 @@ pub struct KfdIoctlGetProcessAperturesArgs {
     pub num_of_nodes: u32,
     pub _pad: u32,
 }
+assert_layout!(KfdIoctlGetProcessAperturesArgs, size = 400, align = 8);
 
 define_amdkfd_ioctl!(
     #[deprecated(
@@ -158,6 +166,7 @@ pub struct KfdIoctlGetProcessAperturesNewArgs {
     pub num_of_nodes: u32,
     pub _pad: u32,
 }
+assert_layout!(KfdIoctlGetProcessAperturesNewArgs, size = 16, align = 8);
 
 define_amdkfd_ioctl!(
     /// It allows to query how many gpus are available, by passing 0 in num_of_nodes
@@ -174,6 +183,7 @@ pub struct KfdIoctlGetAvailableMemoryArgs {
     pub gpu_id: GpuId,  /* to KFD */
     pub _pad: u32,
 }
+assert_layout!(KfdIoctlGetAvailableMemoryArgs, size = 16, align = 8);
 define_amdkfd_ioctl!(
     /// Returns allocatable memory in bytes or EINVAL if couldn't find gpu_id
     amdkfd_ioctl_get_available_memory,
@@ -185,10 +195,11 @@ define_amdkfd_ioctl!(
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlRuntimeEnableArgs {
-    r_debug: u64,
-    mode_mask: u32,
-    capabilities_mask: u32,
+    pub r_debug: u64,
+    pub mode_mask: u32,
+    pub capabilities_mask: u32,
 }
+assert_layout!(KfdIoctlRuntimeEnableArgs, size = 16, align = 8);
 define_amdkfd_ioctl!(
     amdkfd_iotctl_runtime_enable,
     KfdIoctlRuntimeEnableArgs,
@@ -206,6 +217,7 @@ pub struct KfdIoctlAllocMemoryOfGpuArgs {
     pub gpu_id: u32,          /* to KFD */
     pub flags: u32,
 }
+assert_layout!(KfdIoctlAllocMemoryOfGpuArgs, size = 40, align = 8);
 // Allocation flags: memory types, pick only one
 pub const KFD_IOC_ALLOC_MEM_FLAGS_VRAM: AllocMemFlag = 1 << 0;
 pub const KFD_IOC_ALLOC_MEM_FLAGS_GTT: AllocMemFlag = 1 << 1;
@@ -240,6 +252,7 @@ define_amdkfd_ioctl!(
 pub struct KfdIoctlFreeMemoryOfGpuArgs {
     pub handle: MemoryHandle, /* to KFD */
 }
+assert_layout!(KfdIoctlFreeMemoryOfGpuArgs, size = 8, align = 8);
 define_amdkfd_ioctl!(
     amdkfd_ioctl_free_memory_of_gpu,
     KfdIoctlFreeMemoryOfGpuArgs,
@@ -255,6 +268,7 @@ pub struct KfdIoctlMapMemoryToGpuArgs {
     pub n_devices: u32,            /* to KFD */
     pub n_success: u32,            /* to/from KFD */
 }
+assert_layout!(KfdIoctlMapMemoryToGpuArgs, size = 24, align = 8);
 define_amdkfd_ioctl!(
     amdkfd_ioctl_map_memory_to_gpu,
     KfdIoctlMapMemoryToGpuArgs,
@@ -270,6 +284,7 @@ pub struct KfdIoctlUnmapMemoryFromGpuArgs {
     pub n_devices: u32,            /* to KFD */
     pub n_success: u32,            /* to/from KFD */
 }
+assert_layout!(KfdIoctlUnmapMemoryFromGpuArgs, size = 24, align = 8);
 define_amdkfd_ioctl!(
     amdkfd_ioctl_unmap_memory_from_gpu,
     KfdIoctlUnmapMemoryFromGpuArgs,
@@ -280,16 +295,29 @@ define_amdkfd_ioctl!(
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlGetDmabufInfoArgs {
-    pub size: u64,         /* from KFD */
+    /// Underlying buffer size in bytes
+    pub size: u64, /* from KFD */
+    /// Ptr to user allocated memory, where the currntly set metadata
+    /// will be copied to,
     pub metadata_ptr: u64, /* to KFD */
     pub metadata_size: u32, /* to KFD (space allocated by user)
-                            * from KFD (actual metadata size)
-                            */
-    pub gpu_id: u32,    /* from KFD */
-    pub flags: u32,     /* from KFD (KFD_IOC_ALLOC_MEM_FLAGS) */
-    pub dmabuf_fd: u32, /* to KFD */
+                             * from KFD (actual metadata size)
+                             */
+    pub gpu_id: GpuId,    /* from KFD */
+    pub flags: u32,       /* from KFD (KFD_IOC_ALLOC_MEM_FLAGS) */
+    pub dmabuf_fd: RawFd, /* to KFD */
 }
+assert_layout!(KfdIoctlGetDmabufInfoArgs, size = 32, align = 8);
 define_amdkfd_ioctl!(
+    /// Get underlying BO metadata and kfd metadata
+    ///
+    /// Metadata size must be large enough or EINVAL
+    /// Metadata has no predefined layout, you'd have to check
+    /// what the source application used.
+    ///
+    /// Mesa3D has it's own metadata layout.
+    ///
+    /// Not all flags will be returned.
     amdkfd_ioctl_get_dmabuf_info,
     KfdIoctlGetDmabufInfoArgs,
     0x1C,
@@ -301,9 +329,10 @@ define_amdkfd_ioctl!(
 pub struct KfdIoctlImportDmabufArgs {
     pub va_addr: u64,         /* to KFD */
     pub handle: MemoryHandle, /* from KFD */
-    pub gpu_id: u32,          /* to KFD */
-    pub dmabuf_fd: u32,       /* to KFD */
+    pub gpu_id: GpuId,        /* to KFD */
+    pub dmabuf_fd: RawFd,     /* to KFD */
 }
+assert_layout!(KfdIoctlImportDmabufArgs, size = 24, align = 8);
 define_amdkfd_ioctl!(
     amdkfd_ioctl_import_dmabuf,
     KfdIoctlImportDmabufArgs,
@@ -316,8 +345,9 @@ define_amdkfd_ioctl!(
 pub struct KfdIoctlExportDmabufArgs {
     pub handle: MemoryHandle, /* to KFD */
     pub flags: u32,           /* to KFD */
-    pub dmabuf_fd: u32,       /* from KFD */
+    pub dmabuf_fd: RawFd,     /* from KFD */
 }
+assert_layout!(KfdIoctlExportDmabufArgs, size = 16, align = 8);
 define_amdkfd_ioctl!(
     amdkfd_ioctl_export_dmabuf,
     KfdIoctlExportDmabufArgs,

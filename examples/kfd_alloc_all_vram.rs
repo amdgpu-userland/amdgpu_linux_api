@@ -40,7 +40,7 @@ fn main() {
         ioctl::amdkfd_ioctl_acquire_vm(
             file.as_raw_fd(),
             &mut ioctl::KfdIoctlAcquireVmArgs {
-                drm_fd: drm_file.as_raw_fd() as u32, // valid fd is positive
+                drm_fd: drm_file.as_raw_fd(), // valid fd is positive
                 gpu_id: vec[0].gpu_id,
             },
         )

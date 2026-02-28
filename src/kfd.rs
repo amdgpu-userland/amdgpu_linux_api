@@ -12,7 +12,7 @@ pub struct Kfd {
     file: std::fs::File,
     /// We can cache the result, because the module cannot be unloaded
     /// while the kfd file is still in use
-    version: ioctl::Version,
+    version: ioctl::KfdVersion,
 }
 
 pub struct AmdgpuDrm {
@@ -36,7 +36,7 @@ impl Kfd {
             .open(KFD_FILE_PATH)?;
 
         // Let's do version ioctl to check if we got the right file
-        let mut version = ioctl::Version::default();
+        let mut version = ioctl::KfdVersion::default();
         if let Err(e) = unsafe { ioctl::amdkfd_ioctl_get_version(file.as_raw_fd(), &mut version) } {
             panic!("get_version {e}");
         }
@@ -44,7 +44,7 @@ impl Kfd {
         Ok(Self { file, version })
     }
 
-    pub fn version(&self) -> &ioctl::Version {
+    pub fn version(&self) -> &ioctl::KfdVersion {
         &self.version
     }
 
@@ -214,7 +214,7 @@ impl<'kfd> KfdNode<'kfd> {
     ) -> Result<(KfdNodeAcquiredVm<'kfd>,), AcquireVmError> {
         let mut args = ioctl::KfdIoctlAcquireVmArgs {
             // SAFETY: AmdgpuDrm has a successfully opened file descriptor
-            drm_fd: drm_fd.file.as_raw_fd() as u32,
+            drm_fd: drm_fd.file.as_raw_fd(),
             gpu_id: self.gpu_id,
         };
         if let Err(e) = unsafe { ioctl::amdkfd_ioctl_acquire_vm(self.kfd.as_raw_fd(), &mut args) } {

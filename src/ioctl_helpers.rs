@@ -39,3 +39,18 @@ macro_rules! define_ioctl {
         }
     }
 }
+
+macro_rules! assert_layout {
+    ($type:ty, size = $size:expr, align = $align:expr) => {
+        const _: () = {
+            assert!(
+                std::mem::size_of::<$type>() == $size,
+                concat!(stringify!($type), ": size mismatch")
+            );
+            assert!(
+                std::mem::align_of::<$type>() == $align,
+                concat!(stringify!($type), ": alignment mismatch")
+            );
+        };
+    };
+}

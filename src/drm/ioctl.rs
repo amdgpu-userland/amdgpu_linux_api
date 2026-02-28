@@ -36,7 +36,7 @@ macro_rules! define_amddrm_ioctl {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct Version {
+pub struct DrmVersion {
     /// Major version
     pub major: i32,
     /// Minor version
@@ -46,7 +46,7 @@ pub struct Version {
     /// Length of name buffer
     pub name_len: usize,
     /// Name of driver
-    pub name: *const u8,
+    pub name: *mut u8,
     /// Length of date buffer
     pub date_len: usize,
     /// User-space buffer to hold date
@@ -56,8 +56,9 @@ pub struct Version {
     /// User-space buffer to hold desc
     pub desc: *mut u8,
 }
+assert_layout!(DrmVersion, size = 64, align = 8);
 
-define_drm_ioctl!(drm_ioctl_version, Version, 0x0, WR);
+define_drm_ioctl!(drm_ioctl_version, DrmVersion, 0x0, WR);
 
 define_drm_ioctl!(drm_ioctl_set_master, 0x1e);
 define_drm_ioctl!(drm_ioctl_drop_master, 0x1f);
@@ -88,6 +89,7 @@ pub union DrmAmdgpuGemCreate {
     pub input: DrmAmdgpuGemCreateIn,
     pub output: DrmAmdgpuGemCreateOut,
 }
+assert_layout!(DrmAmdgpuGemCreate, size = 32, align = 8);
 define_amddrm_ioctl!(
     /// Creates a new gem object
     ///
