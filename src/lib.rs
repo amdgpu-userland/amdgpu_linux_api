@@ -2,9 +2,7 @@
 mod ioctl_helpers;
 
 /// Think OpenGL and Vulkan
-pub mod drm {
-    pub mod ioctl;
-}
+pub mod drm;
 
 /// Bindings for Kernel Fusion Driver
 /// the thing Radeon Open CoMpute (ROCM) is built on

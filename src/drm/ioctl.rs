@@ -12,6 +12,14 @@ macro_rules! define_drm_ioctl {
             $ioctl_direction
         );
     };
+    ($(#[$meta:meta])* $fn_name:ident, $ioctl_num:expr) => {
+        define_ioctl!(
+            $(#[$meta])*
+            $fn_name,
+            $ioctl_num,
+            DRM_IOCTL_BASE
+        );
+    };
 }
 macro_rules! define_amddrm_ioctl {
     ($(#[$meta:meta])* $fn_name:ident, $args_ty:ty, $num:literal, $ioctl_direction:tt) => {
@@ -51,6 +59,9 @@ pub struct Version {
 
 define_drm_ioctl!(drm_ioctl_version, Version, 0x0, WR);
 
+define_drm_ioctl!(drm_ioctl_set_master, 0x1e);
+define_drm_ioctl!(drm_ioctl_drop_master, 0x1f);
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct DrmAmdgpuGemCreateIn {
@@ -77,4 +88,11 @@ pub union DrmAmdgpuGemCreate {
     pub input: DrmAmdgpuGemCreateIn,
     pub output: DrmAmdgpuGemCreateOut,
 }
-define_amddrm_ioctl!(amdgpu_ioctl_gem_create, DrmAmdgpuGemCreate, 0x0, WR);
+define_amddrm_ioctl!(
+    /// Creates a new gem object
+    ///
+    /// The resulting Gem object doesn't have to have the parameters you set here.
+    /// You need to check the gem's properties lates.
+    ///
+    /// For example it can move the allocation to gtt if there is not enought vram free
+    amdgpu_ioctl_gem_create, DrmAmdgpuGemCreate, 0x0, WR);

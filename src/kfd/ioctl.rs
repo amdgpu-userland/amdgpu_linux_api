@@ -95,7 +95,7 @@ define_amdkfd_ioctl!(
     amdkfd_ioctl_acquire_vm, KfdIoctlAcquireVmArgs, 0x15, W);
 
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Default, Clone, Copy)]
 pub struct KfdProcessDeviceApertures {
     pub lds_base: u64,      /* from KFD */
     pub lds_limit: u64,     /* from KFD */
@@ -105,6 +105,24 @@ pub struct KfdProcessDeviceApertures {
     pub gpuvm_limit: u64,   /* from KFD */
     pub gpu_id: GpuId,      /* from KFD */
     pub _pad: u32,
+}
+
+impl std::fmt::Debug for KfdProcessDeviceApertures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KfdProcessDeviceApertures")
+            .field("lds_base", &format_args!("{:#018x}", self.lds_base))
+            .field("lds_limit", &format_args!("{:#018x}", self.lds_limit))
+            .field("scratch_base", &format_args!("{:#018x}", self.scratch_base))
+            .field(
+                "scratch_limit",
+                &format_args!("{:#018x}", self.scratch_limit),
+            )
+            .field("gpuvm_base", &format_args!("{:#018x}", self.gpuvm_base))
+            .field("gpuvm_limit", &format_args!("{:#018x}", self.gpuvm_limit))
+            .field("gpu_id", &self.gpu_id)
+            .field("_pad", &self._pad)
+            .finish()
+    }
 }
 
 #[repr(C)]
