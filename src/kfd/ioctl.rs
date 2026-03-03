@@ -201,7 +201,7 @@ pub struct KfdIoctlRuntimeEnableArgs {
 }
 assert_layout!(KfdIoctlRuntimeEnableArgs, size = 16, align = 8);
 define_amdkfd_ioctl!(
-    amdkfd_iotctl_runtime_enable,
+    amdkfd_ioctl_runtime_enable,
     KfdIoctlRuntimeEnableArgs,
     0x25,
     WR
@@ -237,6 +237,7 @@ pub const KFD_IOC_ALLOC_MEM_FLAGS_EXT_COHERENT: AllocMemFlag = 1 << 24;
 pub const KFD_IOC_ALLOC_MEM_FLAGS_CONTIGUOUS: AllocMemFlag = 1 << 23;
 define_amdkfd_ioctl!(
     /// You need to first `acquire_vm`
+    ///
     /// Returns:
     /// * ENODEV - compute vm is not initialized
     /// * EINVAL - if MMIO_REMAP set and size != PAGE_SIZE also the kernel must use PAGE_SIZE =

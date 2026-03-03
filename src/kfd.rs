@@ -1,437 +1,486 @@
 use std::{
-    io,
-    mem::MaybeUninit,
-    os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd},
+    ops::{Deref, DerefMut},
+    os::fd::{AsFd, AsRawFd},
 };
 
+use crate::{drm::AmdgpuDrmFile, kfd::gpu_id::AsGpuId};
+
+pub mod apertures;
 pub mod ioctl;
 
 pub const KFD_FILE_PATH: &str = "/dev/kfd";
 
-pub struct Kfd {
-    file: std::fs::File,
-    /// We can cache the result, because the module cannot be unloaded
-    /// while the kfd file is still in use
-    version: ioctl::KfdVersion,
-}
-
-pub struct AmdgpuDrm {
-    pub file: std::fs::File,
-}
+/// Simple unifying abstraction for opened KFD chardev file.
+///
+/// Opening it creates a process global kfd_process.
+/// Closing/dropping a kfd_file does not release any resources untill program exits.
+///
+/// Therefore all operations on kfd file don't require exclusive access.
+///
+/// Except for ptrace tracing process, all use of kfd file is restricted to the process, which
+/// opened it.
+///
+pub unsafe trait KfdFile: AsFd {}
 
 #[derive(Debug)]
-pub enum AperturesError {
-    /// Internal kcalloc() failed
-    NoMem,
-    CopyingBackToUser,
-    Unexpected(ioctl::Errno),
+pub enum OpenError {
+    OpeningKfdFile(std::io::Error),
+    GettingVersion(libc::c_int),
+    VersionBelowRequested,
 }
 
-impl Kfd {
-    pub fn open() -> std::io::Result<Self> {
-        let file = std::fs::File::options()
-            // needs write permissions for mmap
-            .write(true)
-            .read(true)
-            .open(KFD_FILE_PATH)?;
-
-        // Let's do version ioctl to check if we got the right file
-        let mut version = ioctl::KfdVersion::default();
-        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_get_version(file.as_raw_fd(), &mut version) } {
-            panic!("get_version {e}");
+/// Convenience macro to define versioned Kfd structs
+///
+/// We can assume version is not going to change,
+/// because the module cannot be unloaded
+/// while the kfd file is still in use
+macro_rules! define_kfd_version {
+    ($name:ident, $major:literal, $minor:literal $(, $auto_trait:ty)*) => {
+        #[doc = concat!("Kfd at least ", $major, ".", $minor)]
+        pub struct $name {
+            fd: std::os::fd::OwnedFd,
         }
 
-        Ok(Self { file, version })
-    }
+        impl $name {
+            pub fn open() -> Result<Self, OpenError> {
+                let file = std::fs::File::options()
+                    // needs write permissions for mmap
+                    .write(true)
+                    .read(true)
+                    .open(KFD_FILE_PATH)
+                    .map_err(OpenError::OpeningKfdFile)?;
 
-    pub fn version(&self) -> &ioctl::KfdVersion {
-        &self.version
-    }
+                let mut version = ioctl::KfdVersion::default();
+                unsafe { ioctl::amdkfd_ioctl_get_version(std::os::fd::AsRawFd::as_raw_fd(&file), &mut version) }
+                    .map_err(OpenError::GettingVersion)?;
 
-    // fn apertures(&self) -> io::Result<Vec<KfdProcessDeviceApertures>> {
-    //     let mut args = KfdIoctlGetProcessAperturesNewArgs {
-    //         num_of_nodes: 0,
-    //         ..Default::default()
-    //     };
-    //     unsafe { amdkfd_ioctl_get_process_apertures_new(self.file.as_raw_fd(), &mut args) }?;
-    //     let mut vec: Vec<KfdProcessDeviceApertures> =
-    //         vec![KfdProcessDeviceApertures::default(); args.num_of_nodes as usize];
-    //     args.kfd_process_device_apertures_ptr = vec.as_mut_ptr();
-    //     unsafe { amdkfd_ioctl_get_process_apertures_new(self.file.as_raw_fd(), &mut args) }?;
-    //
-    //     Ok(vec)
-    // }
+                if version.major < $major && version.minor < $minor {
+                    return Err(OpenError::VersionBelowRequested);
+                }
 
-    /// Remember that devices can be removed after this call, so
-    /// return values might not be valid after some time
-    #[doc(alias = "apertures")]
-    pub fn devices(&self) -> Result<Vec<ioctl::KfdProcessDeviceApertures>, AperturesError> {
-        let mut args = ioctl::KfdIoctlGetProcessAperturesNewArgs {
-            num_of_nodes: 0,
-            ..Default::default()
-        };
-        // Gets num_of_nodes
-        let res = unsafe {
-            ioctl::amdkfd_ioctl_get_process_apertures_new(self.file.as_raw_fd(), &mut args)
-        };
-        debug_assert!(
-            res.is_ok(),
-            "When num_of_nodes = 0, it shouldn't be able to throw"
-        );
-
-        let mut vec: Vec<MaybeUninit<ioctl::KfdProcessDeviceApertures>> =
-            Vec::with_capacity(args.num_of_nodes as usize);
-        unsafe { vec.set_len(args.num_of_nodes as usize) };
-
-        args.kfd_process_device_apertures_ptr =
-            vec.as_mut_ptr() as *mut ioctl::KfdProcessDeviceApertures;
-        if let Err(e) = unsafe {
-            ioctl::amdkfd_ioctl_get_process_apertures_new(self.file.as_raw_fd(), &mut args)
-        } {
-            let er = match e {
-                libc::ENOMEM => AperturesError::NoMem,
-                libc::EFAULT => AperturesError::CopyingBackToUser,
-                _ => AperturesError::Unexpected(e),
-            };
-            return Err(er);
+                Ok(Self { fd: file.into() })
+            }
         }
 
-        // SAFETY: the ioctl has initialized all elements
-        Ok(unsafe {
-            std::mem::transmute::<
-                Vec<MaybeUninit<ioctl::KfdProcessDeviceApertures>>,
-                Vec<ioctl::KfdProcessDeviceApertures>,
-            >(vec)
-        })
-    }
-}
-impl Kfd {
-    /// Please call with relatively small array.
-    /// There should be at least 1 gpu (len = 1)
-    /// Old kfd limit was 7
-    ///
-    /// Remember that devices can be removed after this call, so
-    /// return values might not be valid after some time
-    #[deprecated(note = "use devices() instead")]
-    pub fn apertures_with_known_size(
-        &self,
-        buf: &mut [ioctl::KfdProcessDeviceApertures],
-    ) -> io::Result<usize> {
-        let Ok(len) = u32::try_from(buf.len()) else {
-            panic!("Why do you want over u32::MAX gpus?")
-        };
-        let mut args = ioctl::KfdIoctlGetProcessAperturesNewArgs {
-            kfd_process_device_apertures_ptr: buf.as_mut_ptr(),
-            num_of_nodes: len,
-            _pad: 0,
-        };
-        unsafe { ioctl::amdkfd_ioctl_get_process_apertures_new(self.file.as_raw_fd(), &mut args) }
-            .map_err(std::io::Error::from_raw_os_error)?;
-        Ok(args.num_of_nodes as usize)
-    }
+        impl AsFd for $name {
+            fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+                self.fd.as_fd()
+            }
+        }
+
+        unsafe impl KfdFile for $name {}
+
+        /// It is send but only within the same linux process
+        unsafe impl Send for $name {}
+
+        unsafe impl Sync for $name {}
+
+        $(
+        impl $auto_trait for $name {}
+        )*
+    };
 }
 
-impl Kfd {
-    pub fn as_fd(&self) -> BorrowedFd<'_> {
-        self.file.as_fd()
+define_kfd_version!(Kfd1_1, 1, 1);
+define_kfd_version!(Kfd1_2, 1, 2);
+define_kfd_version!(Kfd1_3, 1, 3);
+define_kfd_version!(Kfd1_4, 1, 4);
+define_kfd_version!(Kfd1_5, 1, 5);
+define_kfd_version!(Kfd1_6, 1, 6);
+define_kfd_version!(Kfd1_7, 1, 7);
+define_kfd_version!(Kfd1_8, 1, 8);
+define_kfd_version!(Kfd1_9, 1, 9);
+define_kfd_version!(Kfd1_10, 1, 10);
+define_kfd_version!(Kfd1_11, 1, 11);
+define_kfd_version!(Kfd1_12, 1, 12);
+define_kfd_version!(Kfd1_13, 1, 13);
+define_kfd_version!(Kfd1_14, 1, 14);
+define_kfd_version!(Kfd1_15, 1, 15);
+define_kfd_version!(Kfd1_16, 1, 16);
+define_kfd_version!(Kfd1_17, 1, 17);
+define_kfd_version!(
+    Kfd1_18,
+    1,
+    18,
+    apertures::Apertures,
+    apertures::AperturesNew,
+    AvailableMemory
+);
+
+/// In KFD commands use gpu_id to signal which device they should impact or use
+///
+/// But gpu_id doesn't hold any lock on devices, which means they can be removed
+/// or changed.
+pub mod gpu_id {
+    pub trait AsGpuId {
+        /// This gpu_id is hopefully still valid
+        fn gpu_id(&self) -> super::ioctl::GpuId;
     }
-}
 
-/// Kfd devices can be removed at runtime
-/// therefore all methods take ownership of the data
-/// and will not return it back on certain errors
-#[derive(Debug, Clone)]
-#[doc(alias = "Device")]
-pub struct KfdNode<'kfd> {
-    gpu_id: ioctl::GpuId,
-    kfd: BorrowedFd<'kfd>,
-}
-
-impl<'kfd> KfdNode<'kfd> {
-    pub fn from_aperture(kfd: &'kfd Kfd, aperture: &ioctl::KfdProcessDeviceApertures) -> Self {
-        Self {
-            gpu_id: aperture.gpu_id,
-            kfd: kfd.as_fd(),
+    /// A shortcut to provide a hopefully valid gpu_id by yourself
+    pub struct ManualGpuId(super::ioctl::GpuId);
+    impl ManualGpuId {
+        pub fn from(gpu_id: super::ioctl::GpuId) -> Self {
+            Self(gpu_id)
+        }
+    }
+    impl AsGpuId for ManualGpuId {
+        fn gpu_id(&self) -> super::ioctl::GpuId {
+            self.0
         }
     }
 
-    pub unsafe fn from_raw(kfd: BorrowedFd<'kfd>, gpu_id: ioctl::GpuId) -> Self {
-        Self { gpu_id, kfd }
+    impl AsGpuId for super::ioctl::KfdProcessDeviceApertures {
+        fn gpu_id(&self) -> super::ioctl::GpuId {
+            self.gpu_id
+        }
     }
 }
 
 #[derive(Debug)]
 pub enum AvailableMemoryError {
-    NodeNotFound,
+    GpuNotFound,
     Unexpected(ioctl::Errno),
 }
+pub trait AvailableMemory: KfdFile {
+    /// Get how many bytes you should be able to allocate in VRAM.
+    ///
+    /// The value can change dynamically as you might not be the only user of the device.
+    ///
+    /// Because in case of error it's unsafe to use the provided gpu_id
+    /// it's passed by moving ownership
+    fn available_memory<T: AsGpuId>(&self, gpu: T) -> Result<(T, u64), AvailableMemoryError> {
+        let fd = self.as_fd().as_raw_fd();
+        let gpu_id = gpu.gpu_id();
 
-#[derive(Debug)]
-pub enum AcquireVmError {
-    NodeNotFound,
-    WrongDrmFile,
-    Unexpected(ioctl::Errno),
-}
-
-impl<'kfd> KfdNode<'kfd> {
-    pub fn create_queue(self) -> (Self,) {
-        (self,)
-    }
-
-    /// Get how many bytes you should be able to allocate with alloc_memory_of_gpu.
-    pub fn available_memory(self) -> Result<(Self, u64), AvailableMemoryError> {
         let mut args = ioctl::KfdIoctlGetAvailableMemoryArgs {
-            gpu_id: self.gpu_id,
+            gpu_id,
             ..Default::default()
         };
-        if let Err(e) =
-            unsafe { ioctl::amdkfd_ioctl_get_available_memory(self.kfd.as_raw_fd(), &mut args) }
-        {
+        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_get_available_memory(fd, &mut args) } {
             return match e {
-                libc::EINVAL => Err(AvailableMemoryError::NodeNotFound),
+                libc::EINVAL => Err(AvailableMemoryError::GpuNotFound),
                 _ => Err(AvailableMemoryError::Unexpected(e)),
             };
         }
-        Ok((self, args.available))
-    }
-
-    pub fn clock_counters(self) -> (Self,) {
-        (self,)
-    }
-
-    pub fn set_scratch_backing_va(self) -> (Self,) {
-        (self,)
-    }
-
-    pub fn tile_config(self) -> (Self,) {
-        (self,)
-    }
-
-    /// Signature not finished yet. There is an ownership transfer for drm_file internal VM.
-    pub unsafe fn acquire_vm(
-        self,
-        drm_fd: &mut AmdgpuDrm,
-    ) -> Result<(KfdNodeAcquiredVm<'kfd>,), AcquireVmError> {
-        let mut args = ioctl::KfdIoctlAcquireVmArgs {
-            // SAFETY: AmdgpuDrm has a successfully opened file descriptor
-            drm_fd: drm_fd.file.as_raw_fd(),
-            gpu_id: self.gpu_id,
-        };
-        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_acquire_vm(self.kfd.as_raw_fd(), &mut args) } {
-            let er = match e {
-                // We can be sure that it's not because of drm_fd
-                libc::EINVAL => AcquireVmError::NodeNotFound,
-                libc::EBUSY => AcquireVmError::WrongDrmFile,
-                _ => AcquireVmError::Unexpected(e),
-            };
-            return Err(er);
-        }
-        Ok((KfdNodeAcquiredVm(self),))
-    }
-
-    pub fn alloc_memory_of_gpu(self) -> (Self,) {
-        // let mut args = KfdIoctlAllocMemoryOfGpuArgs {
-        //     va_addr: todo!(),
-        //     size: todo!(),
-        //     handle: 0,
-        //     mmap_offset: todo!(),
-        //     gpu_id: self.gpu_id,
-        //     flags: todo!(),
-        // };
-        // if let Err(e) = unsafe { amdkfd_ioctl_alloc_memory_of_gpu(self.kfd.as_raw_fd(), &mut args) }
-        // {
-        //     let _ = e;
-        //     todo!()
-        // }
-        (self,)
-    }
-
-    pub fn import_dmabuf(self) -> (Self,) {
-        (self,)
-    }
-
-    #[deprecated(
-        since = "gfx9",
-        note = "It's still available on newer gpus but does nothing"
-    )]
-    pub fn set_memory_policy(self, policy: ()) -> (Self,) {
-        let _ = policy;
-        (self,)
-    }
-}
-
-/// Deprecated debugging api
-impl KfdNode<'_> {
-    pub fn debug_register(self) -> (Self,) {
-        (self,)
-    }
-
-    pub fn debug_unregister(self) -> (Self,) {
-        (self,)
-    }
-
-    pub fn debug_address_watch(self) -> (Self,) {
-        (self,)
-    }
-
-    pub fn debug_wave_control(self) -> (Self,) {
-        (self,)
+        Ok((gpu, args.available))
     }
 }
 
 #[derive(Debug)]
-pub struct KfdNodeAcquiredVm<'kfd>(KfdNode<'kfd>);
-
-pub enum MemCachingPolicy {
-    Coherent,
-    Uncached,
-    ExtCoherent,
+pub enum AcquireVmResult<T: AcquireVm> {
+    /// Successfuly acquired vm from provided drm_file
+    /// **or** it has been already acquired before this call.
+    Ok(AcquiredVm<T>),
+    /// You should probably check if gpu has been removed
+    GpuNotFound(T),
+    /// The kfd object already acquired a VM from a different drm_file
+    ///
+    /// Because droping kfd fd doesn't release resources, it very much possible a VM has already
+    /// been acquired and it could have even been done by outside code if it used exec into us.
+    MemoryAlreadyAcquiredWithDifferentDrmFile(AcquiredVm<T>),
+    Unexpected(ioctl::Errno),
 }
 
-pub struct KfdVramMem {}
-
-impl<'kfd> KfdMemory<'kfd> for KfdVramMem {
-    fn handle(&self) -> ioctl::MemoryHandle {
-        todo!()
-    }
-
-    fn kfd(&self) -> BorrowedFd<'kfd> {
-        todo!()
-    }
-}
-
-impl<'kfd> KfdNodeAcquiredVm<'kfd> {
-    pub fn allocate_vram(
+pub trait AcquireVm: KfdFile + Sized {
+    /// This could take a &self instead, since all opened kfd files point to the same object in the
+    /// kernel and closing them don't release resources / state.
+    ///
+    /// But to signal that from this point onward you can know that the kfd object has acquired
+    /// a VM it take an owernership of KfdFile
+    fn acquire_vm(
         self,
-        gpu_virtual_address: u64,
-        size: usize,
-        flags: u32,
-    ) -> Result<(Self, ioctl::MemoryHandle), ()> {
-        let mut args = ioctl::KfdIoctlAllocMemoryOfGpuArgs {
-            va_addr: gpu_virtual_address,
-            size: u64::try_from(size).unwrap(),
-            handle: 0,
-            mmap_offset: 0,
-            gpu_id: self.0.gpu_id,
-            flags,
-        };
-        if let Err(e) =
-            unsafe { ioctl::amdkfd_ioctl_alloc_memory_of_gpu(self.0.kfd.as_raw_fd(), &mut args) }
-        {
-            match e {
-                _ => todo!("allocating vram: {e}"),
-            }
-        }
-        Ok((self, args.handle))
-    }
+        gpu_id: &impl AsGpuId,
+        drm_file: &impl AmdgpuDrmFile,
+    ) -> AcquireVmResult<Self> {
+        let drm_fd = drm_file.as_fd().as_raw_fd();
+        let gpu_id = gpu_id.gpu_id();
+        let kfd_fd = self.as_fd().as_raw_fd();
 
-    pub fn allocate_userptr_backed_memory<'user_mem>(
-        self,
-        user_mem: &'user_mem mut [u8],
-        gpu_virtual_address: u64,
-    ) -> Result<(Self, UserptrMem<'kfd, 'user_mem>), ()> {
-        let mut args = ioctl::KfdIoctlAllocMemoryOfGpuArgs {
-            va_addr: gpu_virtual_address,
-            size: u64::try_from(user_mem.len()).expect("size to fit u64"),
-            handle: 0,
-            mmap_offset: user_mem.as_ptr() as u64,
-            gpu_id: self.0.gpu_id,
-            flags: ioctl::KFD_IOC_ALLOC_MEM_FLAGS_USERPTR,
-        };
-        if let Err(e) =
-            unsafe { ioctl::amdkfd_ioctl_alloc_memory_of_gpu(self.0.kfd.as_raw_fd(), &mut args) }
-        {
-            match e {
-                _ => todo!("Allocation error: {e}"),
-            }
-        }
-        let kfd = self.0.clone();
-        Ok((
-            self,
-            UserptrMem {
-                kfd_node: kfd,
-                mem: user_mem,
-                handle: args.handle,
-                va: gpu_virtual_address,
-            },
-        ))
-    }
-}
-
-pub struct UserptrMem<'kfd, 'mem> {
-    pub kfd_node: KfdNode<'kfd>,
-    pub mem: &'mem mut [u8],
-    pub handle: ioctl::MemoryHandle,
-    pub va: u64,
-}
-
-pub trait KfdMemory<'kfd> {
-    fn handle(&self) -> ioctl::MemoryHandle;
-    fn kfd(&self) -> BorrowedFd<'kfd>;
-}
-
-pub trait DmabufExportableMemory<'kfd>: KfdMemory<'kfd> + Sized {
-    fn export_dmabuf(self, flags: u32) -> Result<(Self, OwnedFd), ()> {
-        let mut args = ioctl::KfdIoctlExportDmabufArgs {
-            handle: self.handle(),
-            flags,
-            dmabuf_fd: 0,
-        };
-        if let Err(e) =
-            unsafe { ioctl::amdkfd_ioctl_export_dmabuf(self.kfd().as_raw_fd(), &mut args) }
-        {
-            match e {
-                _ => todo!("exporting dmabuf: {e}"),
-            }
-        }
-        Ok((self, unsafe {
-            OwnedFd::from_raw_fd(args.dmabuf_fd.try_into().unwrap())
-        }))
-    }
-}
-
-impl<'kfd, 'mem> UserptrMem<'kfd, 'mem> {
-    pub fn map_memory(self, device_ids: &[u32]) -> Result<(Self,), ()> {
-        let n_devices = u32::try_from(device_ids.len()).map_err(|_| ())?;
-        let mut args = ioctl::KfdIoctlMapMemoryToGpuArgs {
-            handle: self.handle,
-            device_ids_array_ptr: device_ids.as_ptr() as u64,
-            n_devices: n_devices,
-            n_success: 0,
-        };
-        while args.n_success < args.n_devices {
-            if let Err(e) = unsafe {
-                ioctl::amdkfd_ioctl_map_memory_to_gpu(self.kfd_node.kfd.as_raw_fd(), &mut args)
-            } {
-                match e {
-                    _ => todo!("mapping memory to gpus: {e}"),
+        let mut args = ioctl::KfdIoctlAcquireVmArgs { drm_fd, gpu_id };
+        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_acquire_vm(kfd_fd, &mut args) } {
+            return match e {
+                // We can be sure that it's not because of drm_fd
+                libc::EINVAL => AcquireVmResult::GpuNotFound(self),
+                libc::EBUSY => {
+                    AcquireVmResult::MemoryAlreadyAcquiredWithDifferentDrmFile(AcquiredVm(self))
                 }
-            }
+                _ => AcquireVmResult::Unexpected(e),
+            };
         }
-        Ok((self,))
+        AcquireVmResult::Ok(AcquiredVm(self))
     }
 }
 
-/// New debugging api
-impl KfdNode<'_> {}
+/// A kfd file, where it had successfully acquired the VM
+///
+/// Remember droping this doesn't change that a VM has been acquired already for this process.
+#[derive(Debug)]
+pub struct AcquiredVm<T: KfdFile>(T);
 
-/// It holds an internal ref to gpu_id
-pub struct Queue<'kfd> {
-    kfd: BorrowedFd<'kfd>,
-    id: ioctl::QueueId,
-}
+impl<T: KfdFile> Deref for AcquiredVm<T> {
+    type Target = T;
 
-impl Drop for Queue<'_> {
-    fn drop(&mut self) {
-        let res = unsafe {
-            ioctl::amdkfd_ioctl_destroy_queue(
-                self.kfd.as_raw_fd(),
-                &mut ioctl::KfdIoctlDestroyQueueArgs {
-                    queue_id: self.id,
-                    ..Default::default()
-                },
-            )
-        };
-        debug_assert!(res.is_ok())
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
+
+impl<T: KfdFile> DerefMut for AcquiredVm<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+// #[derive(Debug)]
+// pub enum AcquireVmError {
+//     NodeNotFound,
+//     WrongDrmFile,
+//     Unexpected(ioctl::Errno),
+// }
+//
+// impl<'kfd> KfdNode<'kfd> {
+//     pub fn create_queue(self) -> (Self,) {
+//         (self,)
+//     }
+//
+//     pub fn clock_counters(self) -> (Self,) {
+//         (self,)
+//     }
+//
+//     pub fn set_scratch_backing_va(self) -> (Self,) {
+//         (self,)
+//     }
+//
+//     pub fn tile_config(self) -> (Self,) {
+//         (self,)
+//     }
+//
+//     /// Signature not finished yet. There is an ownership transfer for drm_file internal VM.
+//     pub unsafe fn acquire_vm(
+//         self,
+//         drm_fd: &mut AmdgpuDrm,
+//     ) -> Result<(KfdNodeAcquiredVm<'kfd>,), AcquireVmError> {
+//         let mut args = ioctl::KfdIoctlAcquireVmArgs {
+//             // SAFETY: AmdgpuDrm has a successfully opened file descriptor
+//             drm_fd: drm_fd.file.as_raw_fd(),
+//             gpu_id: self.gpu_id,
+//         };
+//         if let Err(e) = unsafe { ioctl::amdkfd_ioctl_acquire_vm(self.kfd.as_raw_fd(), &mut args) } {
+//             let er = match e {
+//                 // We can be sure that it's not because of drm_fd
+//                 libc::EINVAL => AcquireVmError::NodeNotFound,
+//                 libc::EBUSY => AcquireVmError::WrongDrmFile,
+//                 _ => AcquireVmError::Unexpected(e),
+//             };
+//             return Err(er);
+//         }
+//         Ok((KfdNodeAcquiredVm(self),))
+//     }
+//
+//     pub fn alloc_memory_of_gpu(self) -> (Self,) {
+//         // let mut args = KfdIoctlAllocMemoryOfGpuArgs {
+//         //     va_addr: todo!(),
+//         //     size: todo!(),
+//         //     handle: 0,
+//         //     mmap_offset: todo!(),
+//         //     gpu_id: self.gpu_id,
+//         //     flags: todo!(),
+//         // };
+//         // if let Err(e) = unsafe { amdkfd_ioctl_alloc_memory_of_gpu(self.kfd.as_raw_fd(), &mut args) }
+//         // {
+//         //     let _ = e;
+//         //     todo!()
+//         // }
+//         (self,)
+//     }
+//
+//     pub fn import_dmabuf(self) -> (Self,) {
+//         (self,)
+//     }
+//
+//     #[deprecated(
+//         since = "gfx9",
+//         note = "It's still available on newer gpus but does nothing"
+//     )]
+//     pub fn set_memory_policy(self, policy: ()) -> (Self,) {
+//         let _ = policy;
+//         (self,)
+//     }
+// }
+//
+// /// Deprecated debugging api
+// impl KfdNode<'_> {
+//     pub fn debug_register(self) -> (Self,) {
+//         (self,)
+//     }
+//
+//     pub fn debug_unregister(self) -> (Self,) {
+//         (self,)
+//     }
+//
+//     pub fn debug_address_watch(self) -> (Self,) {
+//         (self,)
+//     }
+//
+//     pub fn debug_wave_control(self) -> (Self,) {
+//         (self,)
+//     }
+// }
+//
+// #[derive(Debug)]
+// pub struct KfdNodeAcquiredVm<'kfd>(KfdNode<'kfd>);
+//
+// pub enum MemCachingPolicy {
+//     Coherent,
+//     Uncached,
+//     ExtCoherent,
+// }
+//
+// pub struct KfdVramMem {}
+//
+// impl<'kfd> KfdMemory<'kfd> for KfdVramMem {
+//     fn handle(&self) -> ioctl::MemoryHandle {
+//         todo!()
+//     }
+//
+//     fn kfd(&self) -> BorrowedFd<'kfd> {
+//         todo!()
+//     }
+// }
+//
+// impl<'kfd> KfdNodeAcquiredVm<'kfd> {
+//     pub fn allocate_vram(
+//         self,
+//         gpu_virtual_address: u64,
+//         size: usize,
+//         flags: u32,
+//     ) -> Result<(Self, ioctl::MemoryHandle), ()> {
+//         let mut args = ioctl::KfdIoctlAllocMemoryOfGpuArgs {
+//             va_addr: gpu_virtual_address,
+//             size: u64::try_from(size).unwrap(),
+//             handle: 0,
+//             mmap_offset: 0,
+//             gpu_id: self.0.gpu_id,
+//             flags,
+//         };
+//         if let Err(e) =
+//             unsafe { ioctl::amdkfd_ioctl_alloc_memory_of_gpu(self.0.kfd.as_raw_fd(), &mut args) }
+//         {
+//             match e {
+//                 _ => todo!("allocating vram: {e}"),
+//             }
+//         }
+//         Ok((self, args.handle))
+//     }
+//
+//     pub fn allocate_userptr_backed_memory<'user_mem>(
+//         self,
+//         user_mem: &'user_mem mut [u8],
+//         gpu_virtual_address: u64,
+//     ) -> Result<(Self, UserptrMem<'kfd, 'user_mem>), ()> {
+//         let mut args = ioctl::KfdIoctlAllocMemoryOfGpuArgs {
+//             va_addr: gpu_virtual_address,
+//             size: u64::try_from(user_mem.len()).expect("size to fit u64"),
+//             handle: 0,
+//             mmap_offset: user_mem.as_ptr() as u64,
+//             gpu_id: self.0.gpu_id,
+//             flags: ioctl::KFD_IOC_ALLOC_MEM_FLAGS_USERPTR,
+//         };
+//         if let Err(e) =
+//             unsafe { ioctl::amdkfd_ioctl_alloc_memory_of_gpu(self.0.kfd.as_raw_fd(), &mut args) }
+//         {
+//             match e {
+//                 _ => todo!("Allocation error: {e}"),
+//             }
+//         }
+//         let kfd = self.0.clone();
+//         Ok((
+//             self,
+//             UserptrMem {
+//                 kfd_node: kfd,
+//                 mem: user_mem,
+//                 handle: args.handle,
+//                 va: gpu_virtual_address,
+//             },
+//         ))
+//     }
+// }
+//
+// pub struct UserptrMem<'kfd, 'mem> {
+//     pub kfd_node: KfdNode<'kfd>,
+//     pub mem: &'mem mut [u8],
+//     pub handle: ioctl::MemoryHandle,
+//     pub va: u64,
+// }
+//
+// pub trait KfdMemory<'kfd> {
+//     fn handle(&self) -> ioctl::MemoryHandle;
+//     fn kfd(&self) -> BorrowedFd<'kfd>;
+// }
+//
+// pub trait DmabufExportableMemory<'kfd>: KfdMemory<'kfd> + Sized {
+//     fn export_dmabuf(self, flags: u32) -> Result<(Self, OwnedFd), ()> {
+//         let mut args = ioctl::KfdIoctlExportDmabufArgs {
+//             handle: self.handle(),
+//             flags,
+//             dmabuf_fd: 0,
+//         };
+//         if let Err(e) =
+//             unsafe { ioctl::amdkfd_ioctl_export_dmabuf(self.kfd().as_raw_fd(), &mut args) }
+//         {
+//             match e {
+//                 _ => todo!("exporting dmabuf: {e}"),
+//             }
+//         }
+//         Ok((self, unsafe {
+//             OwnedFd::from_raw_fd(args.dmabuf_fd.try_into().unwrap())
+//         }))
+//     }
+// }
+//
+// impl<'kfd, 'mem> UserptrMem<'kfd, 'mem> {
+//     pub fn map_memory(self, device_ids: &[u32]) -> Result<(Self,), ()> {
+//         let n_devices = u32::try_from(device_ids.len()).map_err(|_| ())?;
+//         let mut args = ioctl::KfdIoctlMapMemoryToGpuArgs {
+//             handle: self.handle,
+//             device_ids_array_ptr: device_ids.as_ptr() as u64,
+//             n_devices: n_devices,
+//             n_success: 0,
+//         };
+//         while args.n_success < args.n_devices {
+//             if let Err(e) = unsafe {
+//                 ioctl::amdkfd_ioctl_map_memory_to_gpu(self.kfd_node.kfd.as_raw_fd(), &mut args)
+//             } {
+//                 match e {
+//                     _ => todo!("mapping memory to gpus: {e}"),
+//                 }
+//             }
+//         }
+//         Ok((self,))
+//     }
+// }
+//
+// /// New debugging api
+// impl KfdNode<'_> {}
+//
+// /// It holds an internal ref to gpu_id
+// pub struct Queue<'kfd> {
+//     kfd: BorrowedFd<'kfd>,
+//     id: ioctl::QueueId,
+// }
+//
+// impl Drop for Queue<'_> {
+//     fn drop(&mut self) {
+//         let res = unsafe {
+//             ioctl::amdkfd_ioctl_destroy_queue(
+//                 self.kfd.as_raw_fd(),
+//                 &mut ioctl::KfdIoctlDestroyQueueArgs {
+//                     queue_id: self.id,
+//                     ..Default::default()
+//                 },
+//             )
+//         };
+//         debug_assert!(res.is_ok())
+//     }
+// }

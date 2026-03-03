@@ -1,6 +1,7 @@
 ## Linux's C header files
 You can find them in kernel-headers package on fedora.
 
+In kernel source code these are the paths:
 ### KFD
 `include/uapi/linux/kfd_sysfs.h`
 `include/uapi/linux/kfd_ioctl.h`
