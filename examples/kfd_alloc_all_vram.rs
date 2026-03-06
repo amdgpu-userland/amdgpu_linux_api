@@ -55,7 +55,7 @@ fn main() {
         handle: 0,
         mmap_offset: 0,
         gpu_id: vec[0].gpu_id,
-        flags: ioctl::KFD_IOC_ALLOC_MEM_FLAGS_VRAM,
+        flags: ioctl::alloc_domain::VRAM,
     };
     let _ = unsafe { ioctl::amdkfd_ioctl_alloc_memory_of_gpu(file.as_raw_fd(), &mut alloc_args) };
 

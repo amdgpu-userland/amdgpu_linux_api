@@ -51,7 +51,7 @@ fn main() {
         handle: 0,
         mmap_offset: memory.as_mut_ptr() as u64,
         gpu_id: vec[0].gpu_id,
-        flags: ioctl::KFD_IOC_ALLOC_MEM_FLAGS_USERPTR,
+        flags: ioctl::alloc_domain::USERPTR,
     };
     let _ = unsafe { ioctl::amdkfd_ioctl_alloc_memory_of_gpu(file.as_raw_fd(), &mut alloc_args) };
 
