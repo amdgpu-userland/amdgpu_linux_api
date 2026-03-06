@@ -201,60 +201,59 @@ pub struct AmdgpuGemMetadataData {
     pub data: [u32; 64],
 }
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy)]
-pub enum MetadataOp {
-    Set = 1,
-    Get = 2,
+pub mod metadata_op {
+    pub type MetadataOp = u32;
+    pub const SET: MetadataOp = 1;
+    pub const GET: MetadataOp = 2;
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct DrmAmdgpuGemMetadata {
     pub handle: GemHandle,
-    pub op: MetadataOp,
+    pub op: metadata_op::MetadataOp,
     pub data: AmdgpuGemMetadataData,
 }
 assert_layout!(DrmAmdgpuGemMetadata, size = 288, align = 8);
 define_amddrm_ioctl!(amdgpu_ioctl_gem_metadata, DrmAmdgpuGemMetadata, 0x06, WR);
 
-#[repr(u32)]
-#[derive(Debug, Clone, Copy)]
-pub enum AmdgpuVaOp {
-    Map = 1,
-    Unmap = 2,
-    Clear = 3,
-    Replace = 4,
+pub mod va_op {
+    pub type AmdgpuVaOp = u32;
+    pub const MAP: AmdgpuVaOp = 1;
+    pub const UNMAP: AmdgpuVaOp = 2;
+    pub const CLEAR: AmdgpuVaOp = 3;
+    pub const REPLACE: AmdgpuVaOp = 4;
 }
 
 pub mod map_flags {
+    pub type AmdgpuVaFlags = u32;
     /// Delay the page table update till the next CS
-    pub const DELAY_UPDATE: u64 = 1 << 0;
+    pub const DELAY_UPDATE: AmdgpuVaFlags = 1 << 0;
 
     /// Readable mapping
-    pub const PAGE_READABLE: u64 = 1 << 1;
+    pub const PAGE_READABLE: AmdgpuVaFlags = 1 << 1;
     /// Writable mapping
-    pub const PAGE_WRITEABLE: u64 = 1 << 2;
+    pub const PAGE_WRITEABLE: AmdgpuVaFlags = 1 << 2;
     /// Executable mapping, new for VI
-    pub const PAGE_EXECUTABLE: u64 = 1 << 3;
+    pub const PAGE_EXECUTABLE: AmdgpuVaFlags = 1 << 3;
     /// Partially resident texture
-    pub const PAGE_PRT: u64 = 1 << 4;
+    pub const PAGE_PRT: AmdgpuVaFlags = 1 << 4;
     /// MTYPE flags mask (bits 5 to 8)
-    pub const MTYPE_MASK: u64 = 0xf << 5;
+    pub const MTYPE_MASK: AmdgpuVaFlags = 0xf << 5;
     /// Default MTYPE. Pre-AI must use this. Recommended for newer ASICs.
-    pub const MTYPE_DEFAULT: u64 = 0 << 5;
+    pub const MTYPE_DEFAULT: AmdgpuVaFlags = 0 << 5;
     /// Use Non Coherent MTYPE instead of default MTYPE
-    pub const MTYPE_NC: u64 = 1 << 5;
+    pub const MTYPE_NC: AmdgpuVaFlags = 1 << 5;
     /// Use Write Combine MTYPE instead of default MTYPE
-    pub const MTYPE_WC: u64 = 2 << 5;
+    pub const MTYPE_WC: AmdgpuVaFlags = 2 << 5;
     /// Use Cache Coherent MTYPE instead of default MTYPE
-    pub const MTYPE_CC: u64 = 3 << 5;
+    pub const MTYPE_CC: AmdgpuVaFlags = 3 << 5;
     /// Use UnCached MTYPE instead of default MTYPE
-    pub const MTYPE_UC: u64 = 4 << 5;
+    pub const MTYPE_UC: AmdgpuVaFlags = 4 << 5;
     /// Use Read Write MTYPE instead of default MTYPE
-    pub const MTYPE_RW: u64 = 5 << 5;
+    pub const MTYPE_RW: AmdgpuVaFlags = 5 << 5;
     /// Don't allocate MALL
-    pub const PAGE_NOALLOC: u64 = 1 << 9;
+    pub const PAGE_NOALLOC: AmdgpuVaFlags = 1 << 9;
 }
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -262,9 +261,9 @@ pub struct DrmAmdgpuGemVa {
     /// GEM object handle
     pub handle: GemHandle,
     pub _pad: u32,
-    pub operation: AmdgpuVaOp,
+    pub operation: va_op::AmdgpuVaOp,
     /// AMDGPU_VM_PAGE_*
-    pub flags: u32,
+    pub flags: map_flags::AmdgpuVaFlags,
     /// VA address to assign. Must be correctly aligned.
     pub va_address: usize,
     /// Specify offset inside of BO to assign. Must be correctly aligned.

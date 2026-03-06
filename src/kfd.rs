@@ -150,7 +150,7 @@ pub trait AvailableMemory: KfdFile {
     ///
     /// Because in case of error it's unsafe to use the provided gpu_id
     /// it's passed by moving ownership
-    fn available_memory<T: AsGpuId>(&self, gpu: T) -> Result<(T, u64), AvailableMemoryError> {
+    fn available_memory<T: AsGpuId>(&self, gpu: T) -> Result<(T, usize), AvailableMemoryError> {
         let fd = self.as_fd().as_raw_fd();
         let gpu_id = gpu.gpu_id();
 

@@ -16,12 +16,28 @@ macro_rules! define_amdkfd_ioctl {
             };
         }
 
-define_amdkfd_ioctl!(amdkfd_ioctl_get_version, KfdVersion, 0x1, R);
+define_amdkfd_ioctl!(amdkfd_ioctl_get_version, KfdVersion, 0x01, R);
 define_amdkfd_ioctl!(amdkfd_ioctl_create_queue, KfdIoctlCreateQueueArgs, 0x02, WR);
 define_amdkfd_ioctl!(
     amdkfd_ioctl_destroy_queue,
     KfdIoctlDestroyQueueArgs,
-    0x3,
+    0x03,
+    WR
+);
+define_amdkfd_ioctl!(
+    #[deprecated(
+        since = "gfx10",
+        note = "It has use for gfx9. For newer asics use per allocation flags."
+    )]
+    amdkfd_ioctl_set_memory_policy,
+    KfdIoctlSetMemoryPolicyArgs,
+    0x04,
+    W
+);
+define_amdkfd_ioctl!(
+    amdkfd_ioctl_get_clock_counters,
+    KfdIoctlGetClockCountersArgs,
+    0x05,
     WR
 );
 define_amdkfd_ioctl!(
@@ -31,9 +47,19 @@ define_amdkfd_ioctl!(
     )]
     amdkfd_ioctl_get_process_apertures,
     KfdIoctlGetProcessAperturesArgs,
-    0x6,
+    0x06,
     R
 );
+define_amdkfd_ioctl!(amdkfd_ioctl_update_queue, KfdIoctlUpdateQueueArgs, 0x07, W);
+define_amdkfd_ioctl!(amdkfd_ioctl_create_event, KfdIoctlCreateEventArgs, 0x08, WR);
+define_amdkfd_ioctl!(
+    amdkfd_ioctl_destroy_event,
+    KfdIoctlDestroyEventArgs,
+    0x09,
+    W
+);
+define_amdkfd_ioctl!(amdkfd_ioctl_set_event, KfdIoctlSetEventArgs, 0x0A, W);
+define_amdkfd_ioctl!(amdkfd_ioctl_reset_event, KfdIoctlResetEventArgs, 0x0B, W);
 define_amdkfd_ioctl!(
     /// It allows to query how many gpus are available, by passing 0 in num_of_nodes
     amdkfd_ioctl_get_process_apertures_new,

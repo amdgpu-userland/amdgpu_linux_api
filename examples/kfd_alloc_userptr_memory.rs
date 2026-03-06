@@ -47,7 +47,7 @@ fn main() {
     let mut memory: Box<[u8]> = vec![42u8; 1500 * 4096].into_boxed_slice();
     let mut alloc_args = ioctl::KfdIoctlAllocMemoryOfGpuArgs {
         va_addr: vec[0].gpuvm_base,
-        size: memory.len() as u64,
+        size: memory.len(),
         handle: 0,
         mmap_offset: memory.as_mut_ptr() as u64,
         gpu_id: vec[0].gpu_id,

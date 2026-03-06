@@ -60,7 +60,7 @@ fn main() {
         num_syncobj_handles: 0,
         offset_in_bo: 0,
         va_address: 0x10000,
-        operation: drm::ioctl::AmdgpuVaOp::Map,
+        operation: drm::ioctl::va_op::MAP,
         vm_timeline_point: 0,
         vm_timeline_syncobj_out: 0,
     };

@@ -1,10 +1,11 @@
-use std::os::fd::RawFd;
+use std::{ffi::c_void, os::fd::RawFd};
 pub type QueueId = u32;
 
 pub type Errno = libc::c_int;
 pub type GpuId = u32;
 pub type MemoryHandle = u64;
 pub type AllocMemFlag = u32;
+pub type VirtualAddress = u64;
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -14,14 +15,13 @@ pub struct KfdVersion {
 }
 assert_layout!(KfdVersion, size = 8, align = 4);
 
-#[repr(u32)]
-pub enum QueueType {
-    Compute = 0,
-    Sdma = 1,
-    ComputeAql = 2,
-    SdmaXgmi = 3,
-    SdmaByEngId = 4,
-}
+pub type QueueType = u32;
+pub const COMPUTE: QueueType = 0;
+pub const SDMA: QueueType = 1;
+pub const COMPUTE_AQL: QueueType = 2;
+pub const SDMA_XGMI: QueueType = 3;
+pub const SDMA_BY_ENG_ID: QueueType = 4;
+
 pub mod queue_limits {
     pub const KFD_MAX_QUEUE_PERCENTAGE: u32 = 100;
     pub const KFD_MAX_QUEUE_PRIORITY: u32 = 15;
@@ -38,7 +38,7 @@ pub struct KfdIoctlCreateQueueArgs {
 
     pub ring_size: u32,        /* to KFD */
     pub gpu_id: GpuId,         /* to KFD */
-    pub queue_type: u32,       /* to KFD */
+    pub queue_type: QueueType, /* to KFD */
     pub queue_percentage: u32, /* to KFD */
     pub queue_priority: u32,   /* to KFD */
     pub queue_id: QueueId,     /* from KFD */
@@ -60,6 +60,36 @@ pub struct KfdIoctlDestroyQueueArgs {
     pub pad: u32,
 }
 assert_layout!(KfdIoctlDestroyQueueArgs, size = 8, align = 4);
+
+pub mod cache_policy {
+    pub type CachePolicy = u32;
+    pub const COHERENT: CachePolicy = 0;
+    pub const NON_COHERENT: CachePolicy = 1;
+}
+pub type MiscProcessFlags = u32;
+pub const KFD_PROC_FLAG_MFMA_HIGH_PRECISION: MiscProcessFlags = 1 << 0;
+
+#[repr(C)]
+pub struct KfdIoctlSetMemoryPolicyArgs {
+    pub alternate_aperture_base: usize,
+    pub alternate_aperture_size: usize,
+    pub gpu_id: GpuId,
+    pub default_policy: cache_policy::CachePolicy,
+    pub alternate_policy: cache_policy::CachePolicy,
+    pub misc_process_flag: MiscProcessFlags,
+}
+assert_layout!(KfdIoctlSetMemoryPolicyArgs, size = 32, align = 8);
+
+#[repr(C)]
+pub struct KfdIoctlGetClockCountersArgs {
+    pub gpu_clock_counter: u64,
+    pub cpu_clock_counter: u64,
+    pub system_clock_counter: u64,
+    pub system_clock_freq: u64,
+    pub gpu_id: GpuId,
+    pub _pad: u32,
+}
+assert_layout!(KfdIoctlGetClockCountersArgs, size = 40, align = 8);
 
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
@@ -103,6 +133,148 @@ pub struct KfdIoctlGetProcessAperturesArgs {
 assert_layout!(KfdIoctlGetProcessAperturesArgs, size = 400, align = 8);
 
 #[repr(C)]
+pub struct KfdIoctlUpdateQueueArgs {
+    /// Ring base address (to KFD)
+    pub ring_base_address: u64,
+    /// Queue ID (to KFD)
+    pub queue_id: QueueId,
+    /// Ring size (to KFD)
+    pub ring_size: u32,
+    /// Queue percentage (to KFD)
+    pub queue_percentage: u32,
+    /// Queue priority (to KFD)
+    pub queue_priority: u32,
+}
+assert_layout!(KfdIoctlUpdateQueueArgs, size = 24, align = 8);
+
+pub mod event_type {
+    pub type EventType = u32;
+    pub const SIGNAL: EventType = 0;
+    pub const NODE_CHANGE: EventType = 1;
+    pub const DEVICE_STATE_CHANGE: EventType = 2;
+    pub const HW_EXCEPTION: EventType = 3;
+    pub const SYSTEM_EVENT: EventType = 4;
+    pub const DEBUG_EVENT: EventType = 5;
+    pub const PROFILE_EVENT: EventType = 6;
+    pub const QUEUE_EVENT: EventType = 7;
+    pub const MEMORY: EventType = 8;
+}
+pub type EventId = u32;
+#[repr(C)]
+pub struct KfdIoctlCreateEventArgs {
+    pub event_page_offset: u64,
+    pub event_trigger_data: u32,
+    pub event_type: event_type::EventType,
+    pub auto_reset: u32,
+    pub node_id: u32,
+    pub event_id: EventId,
+    pub event_slot_index: u32,
+}
+assert_layout!(KfdIoctlCreateEventArgs, size = 32, align = 8);
+
+#[repr(C)]
+pub struct KfdIoctlDestroyEventArgs {
+    pub event_id: EventId,
+    pub _pad: u32,
+}
+assert_layout!(KfdIoctlDestroyEventArgs, size = 8, align = 4);
+
+#[repr(C)]
+pub struct KfdIoctlSetEventArgs {
+    pub event_id: EventId,
+    pub _pad: u32,
+}
+assert_layout!(KfdIoctlSetEventArgs, size = 8, align = 4);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdMemoryExceptionFailure {
+    /// Page not present or supervisor privilege
+    pub not_present: u32,
+    /// Write access to a read-only page
+    pub read_only: u32,
+    /// Execute access to a page marked NX
+    pub no_execute: u32,
+    /// Can't determine the exact fault address
+    pub imprecise: u32,
+}
+
+pub mod hsa_mem_exception {
+    pub type FailureType = u32;
+    pub const NO_RAS: FailureType = 0;
+    pub const ECC_SRAM: FailureType = 1;
+    pub const LINK_SYNCFLOOD: FailureType = 2;
+    pub const GPU_HANG: FailureType = 3;
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdHsaMemoryExceptionData {
+    pub failure: KfdMemoryExceptionFailure,
+    pub va: VirtualAddress,
+    pub gpu_id: GpuId,
+    /// 0 = no RAS error, 1 = ECC_SRAM, 2 = Link_SYNFLOOD (poison),
+    /// 3 = GPU hang (not attributable to a specific cause), other values reserved
+    pub error_type: hsa_mem_exception::FailureType,
+}
+assert_layout!(KfdHsaMemoryExceptionData, size = 32, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdHsaHwExceptionData {
+    pub reset_type: u32,
+    pub reset_cause: u32,
+    pub memory_lost: u32,
+    pub gpu_id: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdHsaSignalEventData {
+    pub last_event_age: u64,
+}
+
+#[repr(C)]
+pub union KfdEventDataUnion {
+    /// Memory exception data (from KFD)
+    pub memory_exception_data: KfdHsaMemoryExceptionData,
+    /// HW exception data (from KFD)
+    pub hw_exception_data: KfdHsaHwExceptionData,
+    /// Signal event data (to and from KFD)
+    pub signal_event_data: KfdHsaSignalEventData,
+}
+
+#[repr(C)]
+pub struct KfdEventData {
+    pub data: KfdEventDataUnion,
+    /// Pointer to an extension structure for future exception types
+    pub kfd_event_data_ext: *mut c_void,
+    pub event_id: EventId,
+    pub _pad: u32,
+}
+#[repr(C)]
+pub struct KfdIoctlWaitEventsArgs {
+    /// Pointer to kfd_event_data array (to KFD)
+    pub events_ptr: u64,
+    /// Number of events (to KFD)
+    pub num_events: u32,
+    /// Wait for all events (to KFD)
+    pub wait_for_all: u32,
+    /// Timeout (to KFD)
+    pub timeout: u32,
+    /// Wait result (from KFD)
+    pub wait_result: u32,
+}
+assert_layout!(KfdIoctlWaitEventsArgs, size = 24, align = 8);
+
+#[repr(C)]
+pub struct KfdIoctlResetEventArgs {
+    pub event_id: EventId,
+    pub _pad: u32,
+}
+assert_layout!(KfdIoctlResetEventArgs, size = 8, align = 4);
+
+#[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlGetProcessAperturesNewArgs {
     /* User allocated. Pointer to struct kfd_process_device_apertures
@@ -129,11 +301,11 @@ assert_layout!(KfdIoctlAcquireVmArgs, size = 8, align = 4);
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlAllocMemoryOfGpuArgs {
-    pub va_addr: u64,         /* to KFD */
-    pub size: u64,            /* to KFD */
-    pub handle: MemoryHandle, /* from KFD */
-    pub mmap_offset: u64,     /* to KFD (userptr), from KFD (mmap offset) */
-    pub gpu_id: u32,          /* to KFD */
+    pub va_addr: VirtualAddress, /* to KFD */
+    pub size: usize,             /* to KFD */
+    pub handle: MemoryHandle,    /* from KFD */
+    pub mmap_offset: u64,        /* to KFD (userptr), from KFD (mmap offset) */
+    pub gpu_id: u32,             /* to KFD */
     pub flags: AllocMemFlag,
 }
 assert_layout!(KfdIoctlAllocMemoryOfGpuArgs, size = 40, align = 8);
@@ -222,18 +394,18 @@ assert_layout!(KfdIoctlGetDmabufInfoArgs, size = 32, align = 8);
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlImportDmabufArgs {
-    pub va_addr: u64,         /* to KFD */
-    pub handle: MemoryHandle, /* from KFD */
-    pub gpu_id: GpuId,        /* to KFD */
-    pub dmabuf_fd: RawFd,     /* to KFD */
+    pub va_addr: VirtualAddress, /* to KFD */
+    pub handle: MemoryHandle,    /* from KFD */
+    pub gpu_id: GpuId,           /* to KFD */
+    pub dmabuf_fd: RawFd,        /* to KFD */
 }
 assert_layout!(KfdIoctlImportDmabufArgs, size = 24, align = 8);
 
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlGetAvailableMemoryArgs {
-    pub available: u64, /* from KFD */
-    pub gpu_id: GpuId,  /* to KFD */
+    pub available: usize, /* from KFD */
+    pub gpu_id: GpuId,    /* to KFD */
     pub _pad: u32,
 }
 assert_layout!(KfdIoctlGetAvailableMemoryArgs, size = 16, align = 8);
