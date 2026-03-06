@@ -104,7 +104,8 @@ define_kfd_version!(
     18,
     apertures::Apertures,
     apertures::AperturesNew,
-    AvailableMemory
+    AvailableMemory,
+    AcquireVm
 );
 
 /// In KFD commands use gpu_id to signal which device they should impact or use
@@ -186,8 +187,8 @@ pub trait AcquireVm: KfdFile + Sized {
     /// This could take a &self instead, since all opened kfd files point to the same object in the
     /// kernel and closing them don't release resources / state.
     ///
-    /// But to signal that from this point onward you can know that the kfd object has acquired
-    /// a VM it take an owernership of KfdFile
+    /// But to signal that after acquiring VM the kfd object will keep it for
+    /// the rest of the duration of the program. The acquired VM cannot be chagned and closing the file doesn't matter.
     fn acquire_vm(
         self,
         gpu_id: &impl AsGpuId,

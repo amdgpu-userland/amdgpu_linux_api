@@ -1,20 +1,24 @@
 use std::{
-    ffi::{OsStr, OsString},
     ops::Deref,
-    os::{
-        fd::{AsFd, AsRawFd, OwnedFd, RawFd},
-        unix::ffi::OsStrExt,
-    },
+    os::fd::{AsFd, AsRawFd, OwnedFd},
 };
 
 pub type GemHandle = u32;
 
+mod hidden;
 pub mod ioctl;
+
+use hidden::open_file_check_version;
+use hidden::verify_if_drm_fd_is_authenticated;
 
 /// Any /dev/dri/* file
 pub unsafe trait DrmFile: AsFd {}
 
 /// Any /dev/dri/card%d file
+///
+/// When opening a primary client it might be already a master and therefore authenticated
+/// but we need to make sure.
+/// Use try_from or try_into to get MasterPrimaryClient.
 pub unsafe trait DrmPrimaryFile: DrmFile {}
 
 /// Any /dev/dri/renderD%d file
@@ -26,11 +30,32 @@ pub unsafe trait AmdgpuDrmFile: DrmFile {}
 pub struct AmdgpuDrmRender3_64 {
     fd: OwnedFd,
 }
+unsafe impl AmdgpuDrmFile for AmdgpuDrmRender3_64 {}
+unsafe impl DrmRenderFile for AmdgpuDrmRender3_64 {}
+unsafe impl DrmFile for AmdgpuDrmRender3_64 {}
+
+impl AmdgpuDrmRender3_64 {
+    pub fn open(number: i32) -> Result<Self, OpenError> {
+        Ok(Self {
+            fd: open_file_check_version(format!("/dev/dri/renderD{number}"))?,
+        })
+    }
+}
+
+impl AsFd for AmdgpuDrmRender3_64 {
+    fn as_fd(&self) -> std::os::unix::prelude::BorrowedFd<'_> {
+        self.fd.as_fd()
+    }
+}
 
 pub struct AmdgpuDrmPrimary3_64 {
     fd: OwnedFd,
 }
 
+impl VerifyAuthenticated for AmdgpuDrmPrimary3_64 {}
+impl AcquireMaster for AmdgpuDrmPrimary3_64 {}
+
+#[derive(Debug)]
 pub enum OpenError {
     OpeningFile(std::io::Error),
     DriverVersionTooOld,
@@ -40,34 +65,9 @@ pub enum OpenError {
 
 impl AmdgpuDrmPrimary3_64 {
     pub fn open(num: i32) -> Result<Self, OpenError> {
-        let file =
-            std::fs::File::open(format!("/dev/dri/card{num}")).map_err(OpenError::OpeningFile)?;
-
-        let mut str_buffer = [0u8; 4096];
-        let (driver_name, rest) = str_buffer.split_at_mut(1024);
-        let (date, desc) = rest.split_at_mut(1024);
-        let mut args = ioctl::DrmVersion {
-            major: 0,
-            minor: 0,
-            patchlevel: 0,
-            name: driver_name.as_mut_ptr(),
-            name_len: driver_name.len(),
-            date: date.as_mut_ptr(),
-            date_len: date.len(),
-            desc: desc.as_mut_ptr(),
-            desc_len: desc.len(),
-        };
-        if let Err(e) = unsafe { ioctl::drm_ioctl_version(file.as_raw_fd(), &mut args) } {
-            return Err(OpenError::Unexpected(e));
-        }
-        if args.major < 3 && args.minor < 64 {
-            return Err(OpenError::DriverVersionTooOld);
-        }
-        if "amdgpu" != OsStr::from_bytes(driver_name).to_string_lossy() {
-            return Err(OpenError::DifferentDriverFromAmdgpu);
-        }
-
-        Ok(Self { fd: file.into() })
+        Ok(Self {
+            fd: open_file_check_version(format!("/dev/dri/card{num}"))?,
+        })
     }
 }
 
@@ -80,14 +80,6 @@ impl AsFd for AmdgpuDrmPrimary3_64 {
 unsafe impl DrmFile for AmdgpuDrmPrimary3_64 {}
 unsafe impl DrmPrimaryFile for AmdgpuDrmPrimary3_64 {}
 unsafe impl AmdgpuDrmFile for AmdgpuDrmPrimary3_64 {}
-
-/// When oopening a primary client it might be already a master and therefore authenticated
-/// but we need to make sure.
-/// Use try_from or try_into to get MasterPrimaryClient.
-#[derive(Debug)]
-pub struct PrimaryClient {
-    file: std::fs::File,
-}
 
 /// A primary client whose TID != current_tid
 ///
@@ -103,11 +95,19 @@ pub enum SetMasterError {
     RunOutOfMemory,
 }
 
-impl TryFrom<PrimaryClient> for MasterPrimaryClient {
-    type Error = (PrimaryClient, SetMasterError);
+pub trait VerifyAuthenticated: DrmPrimaryFile + Sized {
+    fn verify(self) -> Result<Authenticated<Self>, Self> {
+        let fd = self.as_fd().as_raw_fd();
+        if !verify_if_drm_fd_is_authenticated(fd) {
+            return Err(self);
+        }
+        Ok(Authenticated(self))
+    }
+}
 
-    fn try_from(value: PrimaryClient) -> Result<Self, Self::Error> {
-        if let Err(e) = unsafe { ioctl::drm_ioctl_set_master(value.file.as_raw_fd()) } {
+pub trait AcquireMaster: DrmPrimaryFile + Sized {
+    fn acquire(self) -> Result<Master<Self>, (Self, SetMasterError)> {
+        if let Err(e) = unsafe { ioctl::drm_ioctl_set_master(self.as_fd().as_raw_fd()) } {
             let err = match e {
                 libc::EACCES => SetMasterError::RootPermissionsRequired,
                 libc::EBUSY => SetMasterError::OtherMasterAlreadySet,
@@ -115,90 +115,85 @@ impl TryFrom<PrimaryClient> for MasterPrimaryClient {
                 libc::ENOMEM => SetMasterError::RunOutOfMemory,
                 _ => todo!("set_master: {e}"),
             };
-            return Err((value, err));
+            return Err((self, err));
         }
-        Ok(Self(value))
+        Ok(Master(self))
     }
 }
 
-pub fn verify_if_drm_fd_is_authenticated(fd: RawFd) -> bool {
-    let mut args = ioctl::DrmClient::default();
-    let res = unsafe { ioctl::drm_ioctl_get_client(fd, &mut args) };
-    debug_assert!(res.is_ok());
+pub struct Master<T: DrmPrimaryFile + Sized>(T);
 
-    args.auth != 0
-}
-
-/// amdgpu specific && DRM_AUTH | DRM_RENDER_ALLOW
-pub trait AmdgpuAuthenticatedRender {
-    //fn create_gem();
-}
-
-pub trait AuthenticatedClient {}
-
-pub struct AuthenticatedPrimaryClient(PrimaryClient);
-
-impl AuthenticatedClient for AuthenticatedPrimaryClient {}
-
-impl Deref for AuthenticatedPrimaryClient {
-    type Target = PrimaryClient;
+impl<T: DrmPrimaryFile> Deref for Master<T> {
+    type Target = T;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl From<MasterPrimaryClient> for AuthenticatedPrimaryClient {
-    fn from(value: MasterPrimaryClient) -> Self {
-        if let Err(e) = unsafe { ioctl::drm_ioctl_drop_master(value.file.as_raw_fd()) } {
-            match e {
-                libc::EACCES | libc::EINVAL => panic!(
-                    "MasterPrimaryNode was supposed to be current master and belong to the current thread group"
-                ),
-                _ => todo!("drop_master: {e}"),
-            };
+impl<T: DrmPrimaryFile + Sized> Master<T> {
+    pub fn drop_master(self) -> Authenticated<T> {
+        if let Err(e) = unsafe { ioctl::drm_ioctl_drop_master(self.0.as_fd().as_raw_fd()) } {
+            panic!("Unexpected drop_master: {e}");
         }
-        let MasterPrimaryClient(client) = value;
-        Self(client)
+
+        let Master(inner) = self;
+        Authenticated(inner)
     }
 }
 
-#[derive(Debug)]
-pub struct MasterPrimaryClient(PrimaryClient);
+pub struct Authenticated<T: DrmPrimaryFile>(T);
 
-impl AuthenticatedClient for MasterPrimaryClient {}
-
-impl Deref for MasterPrimaryClient {
-    type Target = PrimaryClient;
-
+impl<T: DrmPrimaryFile> Deref for Authenticated<T> {
+    type Target = T;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl Drop for PrimaryClient {
-    fn drop(&mut self) {
-        let _ = unsafe { ioctl::drm_ioctl_drop_master(self.file.as_raw_fd()) };
+unsafe impl<T: AmdgpuDrmFile + DrmPrimaryFile> AmdgpuDrmFile for Authenticated<T> {}
+unsafe impl<T: DrmPrimaryFile> DrmPrimaryFile for Authenticated<T> {}
+unsafe impl<T: DrmPrimaryFile> DrmFile for Authenticated<T> {}
+impl<T: DrmPrimaryFile> AsFd for Authenticated<T> {
+    fn as_fd(&self) -> std::os::unix::prelude::BorrowedFd<'_> {
+        self.0.as_fd()
     }
 }
 
-#[derive(Debug)]
-pub struct RenderClient {
-    _file: std::fs::File,
-}
-
-impl RenderClient {
-    pub fn open(number: i32) -> Result<Self, ()> {
-        let file = match std::fs::File::open(format!("/dev/dri/renderD{}", number)) {
-            Ok(f) => f,
-            Err(_) => todo!(),
+/// Creating GEM objects
+///
+/// The resulting Gem object doesn't have to have the parameters you set here.
+/// You need to check the gem's properties later.
+///
+/// Mmio_remap domain is not allowed
+///
+/// I suspect this trait will be split into separate ones for versioning
+pub trait AmdgpuGemCreate: AmdgpuDrmFile {
+    fn gem_create_cpu(&self, size_in_pages: usize) {
+        let fd = self.as_fd().as_raw_fd();
+        let mut args = ioctl::DrmAmdgpuGemCreate {
+            input: ioctl::DrmAmdgpuGemCreateIn {
+                bo_size: size_in_pages * 4096,
+                alignment: 0,
+                domains: ioctl::gem_domain::CPU,
+                domain_flags: 0,
+            },
         };
-        Ok(Self { _file: file })
+        if let Err(e) = unsafe { ioctl::amdgpu_ioctl_gem_create(fd, &mut args) } {
+            match e {
+                _ => todo!(),
+            }
+        }
     }
+    fn gem_create_gtt() {}
+    fn gem_create_vram() {}
+    fn gem_create_gds() {}
+    fn gem_create_gws() {}
+    fn gem_create_oa() {}
+    fn gem_create_doorbell() {}
 }
 
-pub struct AuthenticatedRenderNode {}
+impl AmdgpuGemCreate for Authenticated<AmdgpuDrmPrimary3_64> {}
+impl AmdgpuGemCreate for AmdgpuDrmRender3_64 {}
 
-pub struct Gem {
-    //handle: GemHandle,
-}
+pub trait AmdgpuGemMetadata: AmdgpuDrmFile {}

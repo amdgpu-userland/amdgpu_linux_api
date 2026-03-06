@@ -1,5 +1,7 @@
 use std::ffi::c_void;
 
+use crate::drm::GemHandle;
+
 const DRM_IOCTL_BASE: u32 = 'd' as u32;
 const DRM_COMMAND_BASE: u32 = 0x40;
 
@@ -90,13 +92,79 @@ define_drm_ioctl!(
 #[derive(Debug, Clone, Copy)]
 pub struct DrmAmdgpuGemCreateIn {
     /** the requested memory size */
-    pub bo_size: u64,
+    pub bo_size: usize,
     /** physical start_addr alignment in bytes for some HW requirements */
-    pub alignment: u64,
+    pub alignment: usize,
     /** the requested memory domains */
     pub domains: u64,
     /** allocation flags */
     pub domain_flags: u64,
+}
+
+pub mod gem_domain {
+    pub const CPU: u64 = 1 << 0;
+    pub const GTT: u64 = 1 << 1;
+    pub const VRAM: u64 = 1 << 2;
+    pub const GDS: u64 = 1 << 3;
+    pub const GWS: u64 = 1 << 4;
+    pub const OA: u64 = 1 << 5;
+    pub const DOORBELL: u64 = 1 << 6;
+    pub const MMIO_REMAP: u64 = 1 << 7;
+}
+
+pub mod gem_flags {
+    /// Flag that CPU access will be required for the case of VRAM domain
+    pub const CPU_ACCESS_REQUIRED: u64 = 1 << 0;
+    /// Flag that CPU access will not work, this VRAM domain is invisible
+    pub const NO_CPU_ACCESS: u64 = 1 << 1;
+    /// Flag that USWC attributes should be used for GTT
+    pub const CPU_GTT_USWC: u64 = 1 << 2;
+    /// Flag that the memory should be in VRAM and cleared
+    pub const VRAM_CLEARED: u64 = 1 << 3;
+    /// Flag that allocating the BO should use linear VRAM
+    pub const VRAM_CONTIGUOUS: u64 = 1 << 5;
+    /// Flag that BO is always valid in this VM
+    pub const VM_ALWAYS_VALID: u64 = 1 << 6;
+    /// Flag that BO sharing will be explicitly synchronized
+    pub const EXPLICIT_SYNC: u64 = 1 << 7;
+    /// Flag that indicates allocating MQD gart on GFX9, where the mtype
+    /// for the second page onward should be set to NC. It should never
+    /// be used by user space applications.
+    pub const CP_MQD_GFX9: u64 = 1 << 8;
+    /// Flag that BO may contain sensitive data that must be wiped before
+    /// releasing the memory
+    pub const VRAM_WIPE_ON_RELEASE: u64 = 1 << 9;
+    /// Flag that BO will be encrypted and that the TMZ bit should be
+    /// set in the PTEs when mapping this buffer via GPUVM or
+    /// accessing it with various hw blocks
+    pub const ENCRYPTED: u64 = 1 << 10;
+    /// Flag that BO will be used only in preemptible context, which does
+    /// not require GTT memory accounting
+    pub const PREEMPTIBLE: u64 = 1 << 11;
+    /// Flag that BO can be discarded under memory pressure without keeping the
+    /// content.
+    pub const DISCARDABLE: u64 = 1 << 12;
+    /// Flag that BO is shared coherently between multiple devices or CPU threads.
+    /// May depend on GPU instructions to flush caches to system scope explicitly.
+    ///
+    /// This influences the choice of MTYPE in the PTEs on GFXv9 and later GPUs and
+    /// may override the MTYPE selected in AMDGPU_VA_OP_MAP.
+    pub const COHERENT: u64 = 1 << 13;
+    /// Flag that BO should not be cached by GPU. Coherent without having to flush
+    /// GPU caches explicitly.
+    ///
+    /// This influences the choice of MTYPE in the PTEs on GFXv9 and later GPUs and
+    /// may override the MTYPE selected in AMDGPU_VA_OP_MAP.
+    pub const UNCACHED: u64 = 1 << 14;
+    /// Flag that BO should be coherent across devices when using device-level
+    /// atomics. May depend on GPU instructions to flush caches to device scope
+    /// explicitly, promoting them to system scope automatically.
+    ///
+    /// This influences the choice of MTYPE in the PTEs on GFXv9 and later GPUs and
+    /// may override the MTYPE selected in AMDGPU_VA_OP_MAP.
+    pub const EXT_COHERENT: u64 = 1 << 15;
+    /// Set PTE.D and recompress during GTT->VRAM moves according to TILING flags.
+    pub const GFX12_DCC: u64 = 1 << 16;
 }
 
 #[repr(C)]
@@ -121,6 +189,100 @@ define_amddrm_ioctl!(
     ///
     /// For example it can move the allocation to gtt if there is not enought vram free
     amdgpu_ioctl_gem_create, DrmAmdgpuGemCreate, 0x0, WR);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct AmdgpuGemMetadataData {
+    /// For future use, no flags defined so far
+    pub flags: u64,
+    /// Family specific tiling info
+    pub tiling_info: u64,
+    pub data_size_bytes: u32,
+    pub data: [u32; 64],
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum MetadataOp {
+    Set = 1,
+    Get = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DrmAmdgpuGemMetadata {
+    pub handle: GemHandle,
+    pub op: MetadataOp,
+    pub data: AmdgpuGemMetadataData,
+}
+assert_layout!(DrmAmdgpuGemMetadata, size = 288, align = 8);
+define_amddrm_ioctl!(amdgpu_ioctl_gem_metadata, DrmAmdgpuGemMetadata, 0x06, WR);
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum AmdgpuVaOp {
+    Map = 1,
+    Unmap = 2,
+    Clear = 3,
+    Replace = 4,
+}
+
+pub mod map_flags {
+    /// Delay the page table update till the next CS
+    pub const DELAY_UPDATE: u64 = 1 << 0;
+
+    /// Readable mapping
+    pub const PAGE_READABLE: u64 = 1 << 1;
+    /// Writable mapping
+    pub const PAGE_WRITEABLE: u64 = 1 << 2;
+    /// Executable mapping, new for VI
+    pub const PAGE_EXECUTABLE: u64 = 1 << 3;
+    /// Partially resident texture
+    pub const PAGE_PRT: u64 = 1 << 4;
+    /// MTYPE flags mask (bits 5 to 8)
+    pub const MTYPE_MASK: u64 = 0xf << 5;
+    /// Default MTYPE. Pre-AI must use this. Recommended for newer ASICs.
+    pub const MTYPE_DEFAULT: u64 = 0 << 5;
+    /// Use Non Coherent MTYPE instead of default MTYPE
+    pub const MTYPE_NC: u64 = 1 << 5;
+    /// Use Write Combine MTYPE instead of default MTYPE
+    pub const MTYPE_WC: u64 = 2 << 5;
+    /// Use Cache Coherent MTYPE instead of default MTYPE
+    pub const MTYPE_CC: u64 = 3 << 5;
+    /// Use UnCached MTYPE instead of default MTYPE
+    pub const MTYPE_UC: u64 = 4 << 5;
+    /// Use Read Write MTYPE instead of default MTYPE
+    pub const MTYPE_RW: u64 = 5 << 5;
+    /// Don't allocate MALL
+    pub const PAGE_NOALLOC: u64 = 1 << 9;
+}
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct DrmAmdgpuGemVa {
+    /// GEM object handle
+    pub handle: GemHandle,
+    pub _pad: u32,
+    pub operation: AmdgpuVaOp,
+    /// AMDGPU_VM_PAGE_*
+    pub flags: u32,
+    /// VA address to assign. Must be correctly aligned.
+    pub va_address: usize,
+    /// Specify offset inside of BO to assign. Must be correctly aligned.
+    pub offset_in_bo: usize,
+    /// Specify mapping size. Must be correctly aligned.
+    pub map_size: usize,
+    /// Sequence number used to add new timeline point.
+    pub vm_timeline_point: u64,
+    /// The vm page table update fence is installed in given
+    /// vm_timeline_syncobj_out at vm_timeline_point.
+    pub vm_timeline_syncobj_out: u32,
+    /// The number of syncobj handles in input_fence_syncobj_handles
+    pub num_syncobj_handles: u32,
+    /// Array of sync object handles to wait for given input fences
+    pub input_fence_syncobj_handles: *const c_void,
+}
+assert_layout!(DrmAmdgpuGemVa, size = 64, align = 8);
+define_amddrm_ioctl!(amdgpu_ioctl_gem_va, DrmAmdgpuGemVa, 0x08, W);
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
