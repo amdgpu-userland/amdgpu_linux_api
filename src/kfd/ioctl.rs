@@ -51,7 +51,9 @@ define_amdkfd_ioctl!(
     R
 );
 define_amdkfd_ioctl!(amdkfd_ioctl_update_queue, KfdIoctlUpdateQueueArgs, 0x07, W);
-define_amdkfd_ioctl!(amdkfd_ioctl_create_event, KfdIoctlCreateEventArgs, 0x08, WR);
+define_amdkfd_ioctl!(
+    /// There is a limit of 4096 events
+    amdkfd_ioctl_create_event, KfdIoctlCreateEventArgs, 0x08, WR);
 define_amdkfd_ioctl!(
     amdkfd_ioctl_destroy_event,
     KfdIoctlDestroyEventArgs,
@@ -60,6 +62,53 @@ define_amdkfd_ioctl!(
 );
 define_amdkfd_ioctl!(amdkfd_ioctl_set_event, KfdIoctlSetEventArgs, 0x0A, W);
 define_amdkfd_ioctl!(amdkfd_ioctl_reset_event, KfdIoctlResetEventArgs, 0x0B, W);
+define_amdkfd_ioctl!(amdkfd_ioctl_wait_events, KfdIoctlWaitEventsArgs, 0x0C, WR);
+define_amdkfd_ioctl!(
+    #[deprecated]
+    amdkfd_ioctl_dbg_register,
+    KfdIoctlDbgRegisterArgs,
+    0x0D,
+    W
+);
+define_amdkfd_ioctl!(
+    #[deprecated]
+    amdkfd_ioctl_dbg_unregister,
+    KfdIoctlDbgUnregisterArgs,
+    0x0E,
+    W
+);
+define_amdkfd_ioctl!(
+    #[deprecated]
+    amdkfd_ioctl_dbg_address_watch,
+    KfdIoctlDbgAddressWatchArgs,
+    0x0F,
+    W
+);
+define_amdkfd_ioctl!(
+    #[deprecated]
+    amdkfd_ioctl_dbg_wave_control,
+    KfdIoctlDbgWaveControlArgs,
+    0x10,
+    W
+);
+define_amdkfd_ioctl!(
+    amdkfd_ioctl_set_scratch_backing_va,
+    KfdIoctlSetScratchBackingVaArgs,
+    0x11,
+    WR
+);
+define_amdkfd_ioctl!(
+    amdkfd_ioctl_get_tile_config,
+    KfdIoctlGetTileConfigArgs,
+    0x12,
+    WR
+);
+define_amdkfd_ioctl!(
+    amdkfd_ioctl_set_trap_handler,
+    KfdIoctlSetTrapHandlerArgs,
+    0x13,
+    W
+);
 define_amdkfd_ioctl!(
     /// It allows to query how many gpus are available, by passing 0 in num_of_nodes
     amdkfd_ioctl_get_process_apertures_new,
@@ -107,6 +156,13 @@ define_amdkfd_ioctl!(
     0x19,
     WR
 );
+define_amdkfd_ioctl!(amdkfd_ioctl_set_cu_mask, KfdIoctlSetCuMaskArgs, 0x1A, W);
+define_amdkfd_ioctl!(
+    amdkfd_ioctl_get_queue_wave_state,
+    KfdIoctlGetQueueWaveStateArgs,
+    0x1B,
+    WR
+);
 define_amdkfd_ioctl!(
     /// Get underlying BO metadata and kfd metadata
     ///
@@ -128,6 +184,18 @@ define_amdkfd_ioctl!(
     0x1D,
     WR
 );
+define_amdkfd_ioctl!(
+    amdkfd_ioctl_alloc_queue_gws,
+    KfdIoctlAllocQueueGwsArgs,
+    0x1E,
+    WR
+);
+define_amdkfd_ioctl!(
+    /// Returns an OwnedFd for a special file
+    /// which you can use to receive process scoped events
+    /// or system scope events if you have enough permissions
+    /// and say so in the filter mask.
+    amdkfd_ioctl_smi_events, KfdIoctlSmiEventsArgs, 0x1F, WR);
 define_amdkfd_ioctl!(
     /// Returns allocatable memory in bytes or EINVAL if couldn't find gpu_id
     amdkfd_ioctl_get_available_memory,
