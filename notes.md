@@ -1,5 +1,5 @@
 ## Modeling ioctl structures
-### Beware of enums
+### Beware of enums for output data
 When you see a known set of values you might be tempted to use an
 enum with repr and manual discriminants.
 

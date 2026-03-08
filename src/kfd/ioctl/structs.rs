@@ -577,6 +577,60 @@ pub struct KfdIoctlSmiEventsArgs {
 }
 assert_layout!(KfdIoctlSmiEventsArgs, size = 8, align = 4);
 
+pub mod kfd_ioctl_svm_flag {
+    pub type Type = u32;
+    pub const HOST_ACCESS: Type = 0x00000001;
+    pub const FLAG_COHERENT: Type = 0x00000002;
+    pub const HIVE_LOCAL: Type = 0x00000004;
+    pub const GPU_RO: Type = 0x00000008;
+    pub const GPU_EXEC: Type = 0x00000010;
+    pub const GPU_READ_MOSTLY: Type = 0x00000020;
+    pub const GPU_ALWAYS_MAPPED: Type = 0x00000040;
+    pub const EXT_COHERENT: Type = 0x00000080;
+}
+
+/// Must be used **only** for input to amdgpu
+#[repr(u32)]
+pub enum KfdIoctlSvmOp {
+    Set = 0,
+    Get = 1,
+}
+
+pub mod kfd_ioctl_svm_location {
+    pub type Type = u32;
+    pub const SYSMEM: Type = 0;
+    pub const UNDEFINED: Type = 0xffffffff;
+}
+
+pub mod kfd_ioctl_svm_attr_type {
+    pub type Type = u32;
+    pub const PREFERRED_LOC: Type = 0;
+    pub const PREFETCH_LOC: Type = 1;
+    pub const ACCESS: Type = 2;
+    pub const ACCESS_IN_PLACE: Type = 3;
+    pub const NO_ACCESS: Type = 4;
+    pub const SET_FLAGS: Type = 5;
+    pub const CLR_FLAGS: Type = 6;
+    pub const GRANULARITY: Type = 7;
+}
+
+#[repr(C)]
+pub struct KfdIoctlSvmAttribute {
+    pub type_: kfd_ioctl_svm_attr_type::Type,
+    pub value: u32,
+}
+assert_layout!(KfdIoctlSvmAttribute, size = 8, align = 4);
+
+#[repr(C)]
+pub struct KfdIoctlSvmArgs {
+    pub start_addr: u64,
+    pub size: usize,
+    pub op: KfdIoctlSvmOp,
+    pub nattr: u32,
+    pub attrs: [KfdIoctlSvmAttribute; 0],
+}
+assert_layout!(KfdIoctlSvmArgs, size = 24, align = 8);
+
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlGetAvailableMemoryArgs {

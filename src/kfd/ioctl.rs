@@ -196,6 +196,7 @@ define_amdkfd_ioctl!(
     /// or system scope events if you have enough permissions
     /// and say so in the filter mask.
     amdkfd_ioctl_smi_events, KfdIoctlSmiEventsArgs, 0x1F, WR);
+define_amdkfd_ioctl!(amdkfd_ioctl_svm, KfdIoctlSvmArgs, 0x20, WR);
 define_amdkfd_ioctl!(
     /// Returns allocatable memory in bytes or EINVAL if couldn't find gpu_id
     amdkfd_ioctl_get_available_memory,
