@@ -1,4 +1,6 @@
 use std::{ffi::c_void, os::fd::RawFd};
+
+use libc::pid_t;
 pub type QueueId = u32;
 
 pub type Errno = libc::c_int;
@@ -638,6 +640,51 @@ pub struct KfdIoctlSetXnackModeArgs {
 }
 assert_layout!(KfdIoctlSetXnackModeArgs, size = 4, align = 4);
 
+#[repr(u32)]
+pub enum KfdCriuOp {
+    ProcessInfo = 0,
+    Checkpoint = 1,
+    Unpause = 2,
+    Restore = 3,
+    Resume = 4,
+}
+
+#[repr(C)]
+pub struct KfdIoctlCriuArgs {
+    pub devices: *mut KfdCriuDeviceBucket, /* Used during ops: CHECKPOINT, RESTORE */
+    pub bos: *mut KfdCriuBoBucket,         /* Used during ops: CHECKPOINT, RESTORE */
+    pub priv_data: *mut c_void,            /* Used during ops: CHECKPOINT, RESTORE */
+    pub priv_data_size: usize,             /* Used during ops: PROCESS_INFO, RESTORE */
+    pub num_devices: u32,                  /* Used during ops: PROCESS_INFO, RESTORE */
+    pub num_bos: u32,                      /* Used during ops: PROCESS_INFO, RESTORE */
+    pub num_objects: u32,                  /* Used during ops: PROCESS_INFO, RESTORE */
+    pub pid: pid_t,                        /* Used during ops: PROCESS_INFO, RESUME */
+    pub op: KfdCriuOp,
+}
+assert_layout!(KfdIoctlCriuArgs, size = 56, align = 8);
+
+#[repr(C)]
+pub struct KfdCriuDeviceBucket {
+    pub user_gpu_id: GpuId,
+    pub actual_gpu_id: u32,
+    pub drm_fd: u32,
+    pub _pad: u32,
+}
+assert_layout!(KfdCriuDeviceBucket, size = 16, align = 4);
+
+#[repr(C)]
+pub struct KfdCriuBoBucket {
+    pub addr: u64,
+    pub size: u64,
+    pub offset: u64,
+    pub restored_offset: u64, /* During restore, updated offset for BO */
+    pub gpu_id: GpuId,        /* This is the user_gpu_id */
+    pub alloc_flags: u32,
+    pub dmabuf_fd: u32,
+    pub _pad: u32,
+}
+assert_layout!(KfdCriuBoBucket, size = 48, align = 8);
+
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlGetAvailableMemoryArgs {
@@ -664,3 +711,164 @@ pub struct KfdIoctlRuntimeEnableArgs {
     pub capabilities_mask: u32,
 }
 assert_layout!(KfdIoctlRuntimeEnableArgs, size = 16, align = 8);
+
+#[repr(u32)]
+pub enum KfdDbgTrapOperation {
+    Enable = 0,
+    Disable = 1,
+    SendRuntimeEvent = 2,
+    SetExceptionsEnabled = 3,
+    SetWaveLaunchOverride = 4, /* DBG_HW_OP */
+    SetWaveLaunchMode = 5,     /* DBG_HW_OP */
+    SuspendQueues = 6,         /* DBG_HW_OP */
+    ResumeQueues = 7,          /* DBG_HW_OP */
+    SetNodeAddressWatch = 8,   /* DBG_HW_OP */
+    ClearNodeAddressWatch = 9, /* DBG_HW_OP */
+    SetFlags = 10,
+    QueryDebugEvent = 11,
+    QueryExceptionInfo = 12,
+    GetQueueSnapshot = 13,
+    GetDeviceSnapshot = 14,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapEnableArgs {
+    pub exception_mask: u64,
+    pub rinfo_ptr: u64,
+    pub rinfo_size: u32,
+    pub dbg_fd: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapSendRuntimeEventArgs {
+    pub exception_mask: u64,
+    pub gpu_id: u32,
+    pub queue_id: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapSetExceptionsEnabledArgs {
+    pub exception_mask: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapSetWaveLaunchOverrideArgs {
+    pub override_mode: u32,
+    pub enable_mask: u32,
+    pub support_request_mask: u32,
+    pub pad: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapSetWaveLaunchModeArgs {
+    pub launch_mode: u32,
+    pub pad: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapSuspendQueuesArgs {
+    pub exception_mask: u64,
+    pub queue_array_ptr: u64,
+    pub num_queues: u32,
+    pub grace_period: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapResumeQueuesArgs {
+    pub queue_array_ptr: u64,
+    pub num_queues: u32,
+    pub pad: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapSetNodeAddressWatchArgs {
+    pub address: u64,
+    pub mode: u32,
+    pub mask: u32,
+    pub gpu_id: u32,
+    pub id: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapClearNodeAddressWatchArgs {
+    pub gpu_id: u32,
+    pub id: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapSetFlagsArgs {
+    pub flags: u32,
+    pub pad: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapQueryDebugEventArgs {
+    pub exception_mask: u64,
+    pub gpu_id: u32,
+    pub queue_id: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapQueryExceptionInfoArgs {
+    pub info_ptr: u64,
+    pub info_size: u32,
+    pub source_id: u32,
+    pub exception_code: u32,
+    pub clear_exception: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapQueueSnapshotArgs {
+    pub exception_mask: u64,
+    pub snapshot_buf_ptr: u64,
+    pub num_queues: u32,
+    pub entry_size: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct KfdIoctlDbgTrapDeviceSnapshotArgs {
+    pub exception_mask: u64,
+    pub snapshot_buf_ptr: u64,
+    pub num_devices: u32,
+    pub entry_size: u32,
+}
+
+#[repr(C)]
+pub union KfdIoctlDbgTrapArgsUnion {
+    pub enable: KfdIoctlDbgTrapEnableArgs,
+    pub send_runtime_event: KfdIoctlDbgTrapSendRuntimeEventArgs,
+    pub set_exceptions_enabled: KfdIoctlDbgTrapSetExceptionsEnabledArgs,
+    pub launch_override: KfdIoctlDbgTrapSetWaveLaunchOverrideArgs,
+    pub launch_mode: KfdIoctlDbgTrapSetWaveLaunchModeArgs,
+    pub suspend_queues: KfdIoctlDbgTrapSuspendQueuesArgs,
+    pub resume_queues: KfdIoctlDbgTrapResumeQueuesArgs,
+    pub set_node_address_watch: KfdIoctlDbgTrapSetNodeAddressWatchArgs,
+    pub clear_node_address_watch: KfdIoctlDbgTrapClearNodeAddressWatchArgs,
+    pub set_flags: KfdIoctlDbgTrapSetFlagsArgs,
+    pub query_debug_event: KfdIoctlDbgTrapQueryDebugEventArgs,
+    pub query_exception_info: KfdIoctlDbgTrapQueryExceptionInfoArgs,
+    pub queue_snapshot: KfdIoctlDbgTrapQueueSnapshotArgs,
+    pub device_snapshot: KfdIoctlDbgTrapDeviceSnapshotArgs,
+}
+
+#[repr(C)]
+pub struct KfdIoctlDbgTrapArgs {
+    pub pid: pid_t,
+    pub op: KfdDbgTrapOperation, // use KfdDbgTrapOperation values
+    pub args: KfdIoctlDbgTrapArgsUnion,
+}
+assert_layout!(KfdIoctlDbgTrapArgs, size = 32, align = 8);

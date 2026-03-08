@@ -206,6 +206,7 @@ define_amdkfd_ioctl!(
     0x21,
     WR
 );
+define_amdkfd_ioctl!(amdkfd_ioctl_criu, KfdIoctlCriuArgs, 0x22, WR);
 define_amdkfd_ioctl!(
     /// Returns allocatable memory in bytes or EINVAL if couldn't find gpu_id
     amdkfd_ioctl_get_available_memory,
@@ -225,3 +226,4 @@ define_amdkfd_ioctl!(
     0x25,
     WR
 );
+define_amdkfd_ioctl!(amdkfd_ioctl_dbg_trap, (), 0x26, WR);
