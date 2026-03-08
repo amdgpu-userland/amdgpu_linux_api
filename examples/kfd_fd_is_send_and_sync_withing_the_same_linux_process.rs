@@ -8,17 +8,17 @@ fn main() {
         let file_ref2 = &file;
 
         scope.spawn(move || {
-            let mut version = ioctl::KfdVersion::default();
-            let _ = unsafe { ioctl::amdkfd_ioctl_get_version(file_ref1.as_raw_fd(), &mut version) };
+            let mut version = ioctl::GetVersionArgs::default();
+            let _ = unsafe { ioctl::get_version(file_ref1.as_raw_fd(), &mut version) };
         });
 
         scope.spawn(move || {
-            let mut version = ioctl::KfdVersion::default();
-            let _ = unsafe { ioctl::amdkfd_ioctl_get_version(file_ref2.as_raw_fd(), &mut version) };
+            let mut version = ioctl::GetVersionArgs::default();
+            let _ = unsafe { ioctl::get_version(file_ref2.as_raw_fd(), &mut version) };
         });
     });
-    let mut version = ioctl::KfdVersion::default();
-    let _ = unsafe { ioctl::amdkfd_ioctl_get_version(file.as_raw_fd(), &mut version) };
+    let mut version = ioctl::GetVersionArgs::default();
+    let _ = unsafe { ioctl::get_version(file.as_raw_fd(), &mut version) };
 
     println!("Sharing a reference accross thread boundry (Sync) is fine in the same process");
 
@@ -29,8 +29,8 @@ fn main() {
 
         let handle = scope.spawn(move || {
             let file = std::fs::File::open("/dev/kfd").unwrap();
-            let mut version = ioctl::KfdVersion::default();
-            let _ = unsafe { ioctl::amdkfd_ioctl_get_version(file.as_raw_fd(), &mut version) };
+            let mut version = ioctl::GetVersionArgs::default();
+            let _ = unsafe { ioctl::get_version(file.as_raw_fd(), &mut version) };
             return file;
         });
 
@@ -40,8 +40,8 @@ fn main() {
 
     let file = res;
 
-    let mut version = ioctl::KfdVersion::default();
-    let _ = unsafe { ioctl::amdkfd_ioctl_get_version(file.as_raw_fd(), &mut version) };
+    let mut version = ioctl::GetVersionArgs::default();
+    let _ = unsafe { ioctl::get_version(file.as_raw_fd(), &mut version) };
 
     println!("Getting a kfd from child thread is fine also (Send)");
 

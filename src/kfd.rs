@@ -50,8 +50,8 @@ macro_rules! define_kfd_version {
                     .open(KFD_FILE_PATH)
                     .map_err(OpenError::OpeningKfdFile)?;
 
-                let mut version = ioctl::KfdVersion::default();
-                unsafe { ioctl::amdkfd_ioctl_get_version(std::os::fd::AsRawFd::as_raw_fd(&file), &mut version) }
+                let mut version = ioctl::GetVersionArgs::default();
+                unsafe { ioctl::get_version(std::os::fd::AsRawFd::as_raw_fd(&file), &mut version) }
                     .map_err(OpenError::GettingVersion)?;
 
                 if version.major < $major && version.minor < $minor {
@@ -131,7 +131,7 @@ pub mod gpu_id {
         }
     }
 
-    impl AsGpuId for super::ioctl::KfdProcessDeviceApertures {
+    impl AsGpuId for super::ioctl::ProcessDeviceApertures {
         fn gpu_id(&self) -> super::ioctl::GpuId {
             self.gpu_id
         }
@@ -154,11 +154,11 @@ pub trait AvailableMemory: KfdFile {
         let fd = self.as_fd().as_raw_fd();
         let gpu_id = gpu.gpu_id();
 
-        let mut args = ioctl::KfdIoctlGetAvailableMemoryArgs {
+        let mut args = ioctl::GetAvailableMemoryArgs {
             gpu_id,
             ..Default::default()
         };
-        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_get_available_memory(fd, &mut args) } {
+        if let Err(e) = unsafe { ioctl::get_available_memory(fd, &mut args) } {
             return match e {
                 libc::EINVAL => Err(AvailableMemoryError::GpuNotFound),
                 _ => Err(AvailableMemoryError::Unexpected(e)),
@@ -198,8 +198,8 @@ pub trait AcquireVm: KfdFile + Sized {
         let gpu_id = gpu_id.gpu_id();
         let kfd_fd = self.as_fd().as_raw_fd();
 
-        let mut args = ioctl::KfdIoctlAcquireVmArgs { drm_fd, gpu_id };
-        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_acquire_vm(kfd_fd, &mut args) } {
+        let mut args = ioctl::AcquireVmArgs { drm_fd, gpu_id };
+        if let Err(e) = unsafe { ioctl::acquire_vm(kfd_fd, &mut args) } {
             return match e {
                 // We can be sure that it's not because of drm_fd
                 libc::EINVAL => AcquireVmResult::GpuNotFound(self),

@@ -1,5 +1,5 @@
 use amdgpu_linux_api::kfd::ioctl;
-use amdgpu_linux_api::kfd::ioctl::kfd_smi_event::*;
+use amdgpu_linux_api::kfd::ioctl::smi_event::*;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
@@ -7,17 +7,17 @@ use std::os::fd::OwnedFd;
 fn main() {
     let file = std::fs::File::open("/dev/kfd").unwrap();
 
-    let mut args = ioctl::KfdIoctlGetProcessAperturesArgs::default();
+    let mut args = ioctl::GetProcessAperturesArgs::default();
     #[allow(deprecated)]
-    let _ = unsafe { ioctl::amdkfd_ioctl_get_process_apertures(file.as_raw_fd(), &mut args) };
+    let _ = unsafe { ioctl::get_process_apertures(file.as_raw_fd(), &mut args) };
 
     let gpu_id = args.process_apertures[0].gpu_id;
 
-    let mut args = ioctl::KfdIoctlSmiEventsArgs {
+    let mut args = ioctl::SmiEventsArgs {
         gpuid: gpu_id,
         anon_fd: 0,
     };
-    let res = unsafe { ioctl::amdkfd_ioctl_smi_events(file.as_raw_fd(), &mut args) };
+    let res = unsafe { ioctl::smi_events(file.as_raw_fd(), &mut args) };
 
     assert!(res.is_ok());
     let smi_fd = unsafe { OwnedFd::from_raw_fd(args.anon_fd) };
@@ -47,12 +47,12 @@ fn main() {
             break;
         }
         if res > 0 {
-            let mut buff = [0u8; ioctl::KFD_SMI_EVENT_MSG_SIZE];
+            let mut buff = [0u8; ioctl::SMI_EVENT_MSG_SIZE];
             let res = unsafe {
                 libc::read(
                     smi_fd.as_raw_fd(),
                     buff.as_mut_ptr() as *mut libc::c_void,
-                    ioctl::KFD_SMI_EVENT_MSG_SIZE,
+                    ioctl::SMI_EVENT_MSG_SIZE,
                 )
             };
             assert!(res > 0);

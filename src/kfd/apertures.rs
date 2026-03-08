@@ -25,13 +25,13 @@ pub trait Apertures: KfdFile {
     /// return values might not be valid after some time
     fn apertures<'buf>(
         &self,
-        buffer: &'buf mut [ioctl::KfdProcessDeviceApertures; 7],
-    ) -> &'buf mut [ioctl::KfdProcessDeviceApertures] {
+        buffer: &'buf mut [ioctl::ProcessDeviceApertures; 7],
+    ) -> &'buf mut [ioctl::ProcessDeviceApertures] {
         let fd = self.as_fd().as_raw_fd();
-        let mut args = ioctl::KfdIoctlGetProcessAperturesArgs::default();
+        let mut args = ioctl::GetProcessAperturesArgs::default();
 
         #[expect(deprecated)]
-        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_get_process_apertures(fd, &mut args) } {
+        if let Err(e) = unsafe { ioctl::get_process_apertures(fd, &mut args) } {
             match e {
                 _ => panic!("unexpected get_process_apertures: {e}"),
             }
@@ -47,26 +47,26 @@ pub trait Apertures: KfdFile {
 pub trait AperturesNew: KfdFile {
     /// Remember that devices can be removed after this call, so
     /// return values might not be valid after some time
-    fn all_apertures(&self) -> Result<Vec<ioctl::KfdProcessDeviceApertures>, AperturesError> {
+    fn all_apertures(&self) -> Result<Vec<ioctl::ProcessDeviceApertures>, AperturesError> {
         let fd = self.as_fd().as_raw_fd();
-        let mut args = ioctl::KfdIoctlGetProcessAperturesNewArgs {
+        let mut args = ioctl::GetProcessAperturesNewArgs {
             num_of_nodes: 0,
             ..Default::default()
         };
         // Gets num_of_nodes
-        let res = unsafe { ioctl::amdkfd_ioctl_get_process_apertures_new(fd, &mut args) };
+        let res = unsafe { ioctl::get_process_apertures_new(fd, &mut args) };
         debug_assert!(
             res.is_ok(),
             "When num_of_nodes = 0, it shouldn't be able to throw"
         );
 
-        let mut vec: Vec<MaybeUninit<ioctl::KfdProcessDeviceApertures>> =
+        let mut vec: Vec<MaybeUninit<ioctl::ProcessDeviceApertures>> =
             Vec::with_capacity(args.num_of_nodes as usize);
         unsafe { vec.set_len(args.num_of_nodes as usize) };
 
         args.kfd_process_device_apertures_ptr =
-            vec.as_mut_ptr() as *mut ioctl::KfdProcessDeviceApertures;
-        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_get_process_apertures_new(fd, &mut args) } {
+            vec.as_mut_ptr() as *mut ioctl::ProcessDeviceApertures;
+        if let Err(e) = unsafe { ioctl::get_process_apertures_new(fd, &mut args) } {
             let er = match e {
                 libc::ENOMEM => AperturesError::NoMem,
                 libc::EFAULT => AperturesError::CopyingBackToUser,
@@ -78,8 +78,8 @@ pub trait AperturesNew: KfdFile {
         // SAFETY: the ioctl has initialized all elements
         Ok(unsafe {
             std::mem::transmute::<
-                Vec<MaybeUninit<ioctl::KfdProcessDeviceApertures>>,
-                Vec<ioctl::KfdProcessDeviceApertures>,
+                Vec<MaybeUninit<ioctl::ProcessDeviceApertures>>,
+                Vec<ioctl::ProcessDeviceApertures>,
             >(vec)
         })
     }
@@ -92,17 +92,17 @@ pub trait AperturesNew: KfdFile {
     /// return values might not be valid after some time
     fn apertures_limited<'buf>(
         &self,
-        buffer: &'buf mut [ioctl::KfdProcessDeviceApertures],
-    ) -> Result<&'buf mut [ioctl::KfdProcessDeviceApertures], AperturesErrorLimited> {
+        buffer: &'buf mut [ioctl::ProcessDeviceApertures],
+    ) -> Result<&'buf mut [ioctl::ProcessDeviceApertures], AperturesErrorLimited> {
         let fd = self.as_fd().as_raw_fd();
-        let mut args = ioctl::KfdIoctlGetProcessAperturesNewArgs {
+        let mut args = ioctl::GetProcessAperturesNewArgs {
             num_of_nodes: u32::try_from(buffer.len())
                 .map_err(|_| AperturesErrorLimited::BufferTooLarge)?,
             kfd_process_device_apertures_ptr: buffer.as_mut_ptr(),
             _pad: 0,
         };
 
-        if let Err(e) = unsafe { ioctl::amdkfd_ioctl_get_process_apertures_new(fd, &mut args) } {
+        if let Err(e) = unsafe { ioctl::get_process_apertures_new(fd, &mut args) } {
             let er = match e {
                 libc::ENOMEM => AperturesErrorLimited::NoMem,
                 libc::EFAULT => AperturesErrorLimited::CopyingBackToUser,
