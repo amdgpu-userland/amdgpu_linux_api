@@ -632,6 +632,13 @@ pub struct KfdIoctlSvmArgs {
 assert_layout!(KfdIoctlSvmArgs, size = 24, align = 8);
 
 #[repr(C)]
+pub struct KfdIoctlSetXnackModeArgs {
+    /// Use negative value to query for current xnack mode
+    pub xnack_enabled: i32,
+}
+assert_layout!(KfdIoctlSetXnackModeArgs, size = 4, align = 4);
+
+#[repr(C)]
 #[derive(Debug, Default)]
 pub struct KfdIoctlGetAvailableMemoryArgs {
     pub available: usize, /* from KFD */
