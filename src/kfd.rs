@@ -7,6 +7,7 @@ use crate::{drm::AmdgpuDrmFile, kfd::gpu_id::AsGpuId};
 
 pub mod apertures;
 pub mod ioctl;
+pub mod mmap;
 
 pub const KFD_FILE_PATH: &str = "/dev/kfd";
 

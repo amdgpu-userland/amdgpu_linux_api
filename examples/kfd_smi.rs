@@ -1,5 +1,4 @@
 use amdgpu_linux_api::kfd::ioctl;
-use amdgpu_linux_api::kfd::ioctl::smi_event::*;
 use std::os::fd::AsRawFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
@@ -22,6 +21,7 @@ fn main() {
     assert!(res.is_ok());
     let smi_fd = unsafe { OwnedFd::from_raw_fd(args.anon_fd) };
 
+    //use amdgpu_linux_api::kfd::ioctl::smi_event::*;
     //let flags = msk(VMFAULT) | msk(PROCESS_START) | msk(PROCESS_END) | msk(ALL_PROCESS);
     let flags = u64::MAX;
     let bytes = flags.to_ne_bytes();
