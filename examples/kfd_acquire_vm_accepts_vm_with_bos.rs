@@ -1,6 +1,6 @@
 use amdgpu_linux_api::drm;
-use amdgpu_linux_api::drm::ioctl::gem_domain::*;
-use amdgpu_linux_api::drm::ioctl::gem_flags::*;
+use amdgpu_linux_api::drm::ioctl::amd::gem_domain::*;
+use amdgpu_linux_api::drm::ioctl::amd::gem_flags::*;
 use amdgpu_linux_api::kfd::ioctl;
 use std::mem::MaybeUninit;
 use std::os::fd::AsRawFd;
@@ -37,19 +37,19 @@ fn main() {
 
     let drm_file = std::fs::File::open("/dev/dri/renderD128").unwrap();
 
-    let mut args = drm::ioctl::DrmAmdgpuGemCreate {
-        input: drm::ioctl::DrmAmdgpuGemCreateIn {
+    let mut args = drm::ioctl::amd::GemCreate {
+        input: drm::ioctl::amd::GemCreateIn {
             alignment: 0,
             bo_size: 4096,
             domains: VRAM,
             domain_flags: VM_ALWAYS_VALID | CPU_ACCESS_REQUIRED,
         },
     };
-    let res = unsafe { drm::ioctl::amdgpu_ioctl_gem_create(drm_file.as_raw_fd(), &mut args) };
+    let res = unsafe { drm::ioctl::amd::gem_create(drm_file.as_raw_fd(), &mut args) };
     assert!(res.is_ok());
     let handle = unsafe { args.output.handle };
 
-    let mut args = drm::ioctl::DrmAmdgpuGemVa {
+    let mut args = drm::ioctl::amd::GemVa {
         _pad: 0,
         flags: 0,
         handle,
@@ -58,11 +58,11 @@ fn main() {
         num_syncobj_handles: 0,
         offset_in_bo: 0,
         va_address: 0x10000,
-        operation: drm::ioctl::va_op::MAP,
+        operation: drm::ioctl::amd::VaOp::Map,
         vm_timeline_point: 0,
         vm_timeline_syncobj_out: 0,
     };
-    let _ = unsafe { drm::ioctl::amdgpu_ioctl_gem_va(drm_file.as_raw_fd(), &mut args) };
+    let _ = unsafe { drm::ioctl::amd::gem_va(drm_file.as_raw_fd(), &mut args) };
     println!("Mapped a gem with handle: {handle:x}");
     let _ = std::io::stdin().read_line(&mut String::new());
 

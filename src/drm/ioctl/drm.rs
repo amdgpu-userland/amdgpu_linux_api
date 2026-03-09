@@ -1,0 +1,35 @@
+use super::DRM_IOCTL_BASE;
+
+mod structs;
+pub use structs::*;
+
+macro_rules! define_drm_ioctl {
+    ($(#[$meta:meta])* $fn_name:ident, $args_ty:ty, $num:literal, $ioctl_direction:tt) => {
+        define_ioctl!(
+            $(#[$meta])*
+            $fn_name,
+            $args_ty,
+            $num,
+            DRM_IOCTL_BASE,
+            $ioctl_direction
+        );
+    };
+    ($(#[$meta:meta])* $fn_name:ident, $ioctl_num:expr) => {
+        define_ioctl!(
+            $(#[$meta])*
+            $fn_name,
+            $ioctl_num,
+            DRM_IOCTL_BASE
+        );
+    };
+}
+define_drm_ioctl!(version, Version, 0x0, WR);
+define_drm_ioctl!(
+    /// Almost deprecated
+    ///
+    /// if idx==0 it will populate some fields
+    /// which you can use to easily determine if this client is authenticated
+    /// EINVAL otherwise
+    get_client, Client, 0x05, WR);
+define_drm_ioctl!(set_master, 0x1e);
+define_drm_ioctl!(drop_master, 0x1f);

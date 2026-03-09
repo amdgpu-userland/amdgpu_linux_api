@@ -4,6 +4,7 @@ use std::{
 };
 
 pub type GemHandle = u32;
+pub type SyncobjHandle = u32;
 
 mod hidden;
 pub mod ioctl;
@@ -37,7 +38,7 @@ unsafe impl DrmFile for AmdgpuDrmRender3_64 {}
 impl AmdgpuDrmRender3_64 {
     pub fn open(number: i32) -> Result<Self, OpenError> {
         Ok(Self {
-            fd: open_file_check_version(format!("/dev/dri/renderD{number}"))?,
+            fd: open_file_check_version(format!("/dev/dri/renderD{number}"), 3, 64)?,
         })
     }
 }
@@ -66,7 +67,7 @@ pub enum OpenError {
 impl AmdgpuDrmPrimary3_64 {
     pub fn open(num: i32) -> Result<Self, OpenError> {
         Ok(Self {
-            fd: open_file_check_version(format!("/dev/dri/card{num}"))?,
+            fd: open_file_check_version(format!("/dev/dri/card{num}"), 3, 64)?,
         })
     }
 }
@@ -107,7 +108,7 @@ pub trait VerifyAuthenticated: DrmPrimaryFile + Sized {
 
 pub trait AcquireMaster: DrmPrimaryFile + Sized {
     fn acquire(self) -> Result<Master<Self>, (Self, SetMasterError)> {
-        if let Err(e) = unsafe { ioctl::drm_ioctl_set_master(self.as_fd().as_raw_fd()) } {
+        if let Err(e) = unsafe { ioctl::drm::set_master(self.as_fd().as_raw_fd()) } {
             let err = match e {
                 libc::EACCES => SetMasterError::RootPermissionsRequired,
                 libc::EBUSY => SetMasterError::OtherMasterAlreadySet,
@@ -133,7 +134,7 @@ impl<T: DrmPrimaryFile> Deref for Master<T> {
 
 impl<T: DrmPrimaryFile + Sized> Master<T> {
     pub fn drop_master(self) -> Authenticated<T> {
-        if let Err(e) = unsafe { ioctl::drm_ioctl_drop_master(self.0.as_fd().as_raw_fd()) } {
+        if let Err(e) = unsafe { ioctl::drm::drop_master(self.0.as_fd().as_raw_fd()) } {
             panic!("Unexpected drop_master: {e}");
         }
 
@@ -171,15 +172,15 @@ impl<T: DrmPrimaryFile> AsFd for Authenticated<T> {
 pub trait AmdgpuGemCreate: AmdgpuDrmFile {
     fn gem_create_cpu(&self, size_in_pages: usize) {
         let fd = self.as_fd().as_raw_fd();
-        let mut args = ioctl::DrmAmdgpuGemCreate {
-            input: ioctl::DrmAmdgpuGemCreateIn {
+        let mut args = ioctl::amd::GemCreate {
+            input: ioctl::amd::GemCreateIn {
                 bo_size: size_in_pages * 4096,
                 alignment: 0,
-                domains: ioctl::gem_domain::CPU,
+                domains: ioctl::amd::gem_domain::CPU,
                 domain_flags: 0,
             },
         };
-        if let Err(e) = unsafe { ioctl::amdgpu_ioctl_gem_create(fd, &mut args) } {
+        if let Err(e) = unsafe { ioctl::amd::gem_create(fd, &mut args) } {
             match e {
                 _ => todo!(),
             }

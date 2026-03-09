@@ -38,7 +38,7 @@ fn main() {
             libc::PROT_WRITE,
             libc::MAP_SHARED,
             kfd.as_fd().as_raw_fd(),
-            ((mmap::DOORBELL) | mmap::gpu_id(gpu_id)) as i64,
+            mmap::DOORBELL | mmap::gpu_id(gpu_id),
         )
     };
     if ptr.addr() == usize::MAX {

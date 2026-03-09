@@ -7,7 +7,7 @@ fn main() {
     let mut str_buffer = [0u8; 4096];
     let (driver_name, rest) = str_buffer.split_at_mut(1024);
     let (date, desc) = rest.split_at_mut(1024);
-    let mut args = ioctl::DrmVersion {
+    let mut args = ioctl::drm::Version {
         major: 0,
         minor: 0,
         patchlevel: 0,
@@ -18,7 +18,7 @@ fn main() {
         desc: desc.as_mut_ptr(),
         desc_len: desc.len(),
     };
-    let _ = unsafe { ioctl::drm_ioctl_version(file.as_raw_fd(), &mut args) };
+    let _ = unsafe { ioctl::drm::version(file.as_raw_fd(), &mut args) };
     println!("{args:?}");
     println!("name: {:?}", str::from_utf8(&driver_name[0..args.name_len]));
     println!("date: {:?}", str::from_utf8(&date[0..args.date_len]));
