@@ -1,3 +1,7 @@
+use std::os::fd::RawFd;
+
+use crate::drm::GemHandle;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct Version {
@@ -26,3 +30,14 @@ pub struct Client {
     pub iocs: u64,
 }
 assert_layout!(Client, size = 40, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PrimeHandle {
+    pub handle: GemHandle,
+    /// open() flags for dmabuf fd
+    pub flags: u32,
+    /// Returned dmabuf file descriptor
+    pub fd: RawFd,
+}
+assert_layout!(PrimeHandle, size = 12, align = 4);

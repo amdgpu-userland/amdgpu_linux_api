@@ -33,3 +33,5 @@ define_drm_ioctl!(
     get_client, Client, 0x05, WR);
 define_drm_ioctl!(set_master, 0x1e);
 define_drm_ioctl!(drop_master, 0x1f);
+define_drm_ioctl!(prime_handle_to_fd, PrimeHandle, 0x2d, WR);
+define_drm_ioctl!(prime_fd_to_handle, PrimeHandle, 0x2e, WR);

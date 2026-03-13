@@ -1,4 +1,7 @@
-use crate::drm::{GemHandle, SyncobjHandle};
+use crate::drm::{
+    GemHandle, SyncobjHandle,
+    ioctl::amd::{BoListHandle, CtxId},
+};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -95,6 +98,181 @@ pub union GemCreate {
     pub output: GemCreateOut,
 }
 assert_layout!(GemCreate, size = 32, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemMmapIn {
+    /// the GEM object handle
+    pub handle: GemHandle,
+    pub _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemMmapOut {
+    /// mmap offset from the vma offset manager
+    pub addr_ptr: u64,
+}
+
+#[repr(C)]
+pub union GemMmap {
+    pub in_: GemMmapIn,
+    pub out: GemMmapOut,
+}
+assert_layout!(GemMmap, size = 8, align = 8);
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum CtxOp {
+    AllocCtx = 1,
+    FreeCtx = 2,
+    QueryState = 3,
+    QueryState2 = 4,
+    GetStablePstate = 5,
+    SetStablePstate = 6,
+}
+
+/* GPU reset status */
+pub const AMDGPU_CTX_NO_RESET: u32 = 0;
+pub const AMDGPU_CTX_GUILTY_RESET: u32 = 1;
+pub const AMDGPU_CTX_INNOCENT_RESET: u32 = 2;
+pub const AMDGPU_CTX_UNKNOWN_RESET: u32 = 3;
+
+/* QUERY2 flags */
+pub const AMDGPU_CTX_QUERY2_FLAGS_RESET: u32 = 1 << 0;
+pub const AMDGPU_CTX_QUERY2_FLAGS_VRAMLOST: u32 = 1 << 1;
+pub const AMDGPU_CTX_QUERY2_FLAGS_GUILTY: u32 = 1 << 2;
+pub const AMDGPU_CTX_QUERY2_FLAGS_RAS_CE: u32 = 1 << 3;
+pub const AMDGPU_CTX_QUERY2_FLAGS_RAS_UE: u32 = 1 << 4;
+pub const AMDGPU_CTX_QUERY2_FLAGS_RESET_IN_PROGRESS: u32 = 1 << 5;
+
+/// Context priority levels
+///
+/// Any other value is treated as Unset, which defaults to Normal
+/// Priority > Normal requires CAP_SYS_NICE or drm master
+#[repr(i32)]
+#[derive(Debug, Clone, Copy)]
+pub enum CtxPriority {
+    Unset = -2048,
+    VeryLow = -1023,
+    Low = -512,
+    Normal = 0,
+    High = 512,
+    VeryHigh = 1023,
+}
+
+/* Stable pstate */
+pub const AMDGPU_CTX_STABLE_PSTATE_FLAGS_MASK: u32 = 0xf;
+pub const AMDGPU_CTX_STABLE_PSTATE_NONE: u32 = 0;
+pub const AMDGPU_CTX_STABLE_PSTATE_STANDARD: u32 = 1;
+pub const AMDGPU_CTX_STABLE_PSTATE_MIN_SCLK: u32 = 2;
+pub const AMDGPU_CTX_STABLE_PSTATE_MIN_MCLK: u32 = 3;
+pub const AMDGPU_CTX_STABLE_PSTATE_PEAK: u32 = 4;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CtxIn {
+    pub op: CtxOp,
+    /// Set to 0 except for SET_PSTATE op
+    pub flags: u32,
+    pub ctx_id: CtxId,
+    /// Only used for ALLOC_CTX
+    pub priority: CtxPriority,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CtxOutAlloc {
+    pub ctx_id: CtxId,
+    pub _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CtxOutState {
+    /// For future use, no flags defined so far
+    pub flags: u64,
+    /// Number of resets caused by this context so far
+    pub hangs: u32,
+    /// Reset status since the last call of the ioctl
+    pub reset_status: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CtxOutPstate {
+    pub flags: u32,
+    pub _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union CtxOut {
+    pub alloc: CtxOutAlloc,
+    pub state: CtxOutState,
+    pub pstate: CtxOutPstate,
+}
+
+#[repr(C)]
+pub union Ctx {
+    pub in_: CtxIn,
+    pub out: CtxOut,
+}
+assert_layout!(Ctx, size = 16, align = 8);
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug)]
+pub enum BoListOp {
+    Create,
+    Destroy,
+    Update,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct BoListIn {
+    /// Type of operation
+    pub operation: BoListOp,
+    /// Handle of list or 0 if we want to create one
+    pub list_handle: BoListHandle,
+    /// Number of BOs in bo_info_ptr
+    pub bo_number: u32,
+    /// Size of each element describing BO
+    /// size_of::<BoListEntry>()
+    pub bo_info_size: u32,
+    /// Pointer to array describing BOs
+    ///
+    /// It teoretically accept any type which is no larger than BoListEntry
+    /// but internally it allocates space as if for BoListEntry and simply casts provided data
+    ///
+    /// It allows for extending BoListEntry in the future
+    pub bo_info_ptr: *const BoListEntry,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct BoListEntry {
+    /// Handle of BO
+    pub bo_handle: u32,
+    /// New (if specified) BO priority to be used during migration
+    pub bo_priority: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct BoListOut {
+    /// Handle of resource list
+    pub list_handle: BoListHandle,
+    pub _pad: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub union BoList {
+    pub in_: BoListIn,
+    pub out: BoListOut,
+}
+assert_layout!(BoList, size = 24, align = 8);
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

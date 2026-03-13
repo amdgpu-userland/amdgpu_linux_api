@@ -334,9 +334,9 @@ assert_layout!(SetScratchBackingVaArgs, size = 16, align = 8);
 #[repr(C)]
 pub struct GetTileConfigArgs {
     /// to KFD: pointer to tile array
-    pub tile_config_ptr: *const c_void,
+    pub tile_config_ptr: *const u32,
     /// to KFD: pointer to macro tile array
-    pub macro_tile_config_ptr: *const c_void,
+    pub macro_tile_config_ptr: *const u32,
     /// to KFD: array size allocated by user mode
     /// from KFD: array size filled by kernel
     pub num_tile_configs: u32,
@@ -442,20 +442,20 @@ assert_layout!(FreeMemoryOfGpuArgs, size = 8, align = 8);
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct MapMemoryToGpuArgs {
-    pub handle: MemoryHandle,      /* to KFD */
-    pub device_ids_array_ptr: u64, /* to KFD */
-    pub n_devices: u32,            /* to KFD */
-    pub n_success: u32,            /* to/from KFD */
+    pub handle: MemoryHandle,               /* to KFD */
+    pub device_ids_array_ptr: *const GpuId, /* to KFD */
+    pub n_devices: u32,                     /* to KFD */
+    pub n_success: u32,                     /* to/from KFD */
 }
 assert_layout!(MapMemoryToGpuArgs, size = 24, align = 8);
 
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct UnmapMemoryFromGpuArgs {
-    pub handle: MemoryHandle,      /* to KFD */
-    pub device_ids_array_ptr: u64, /* to KFD */
-    pub n_devices: u32,            /* to KFD */
-    pub n_success: u32,            /* to/from KFD */
+    pub handle: MemoryHandle,               /* to KFD */
+    pub device_ids_array_ptr: *const GpuId, /* to KFD */
+    pub n_devices: u32,                     /* to KFD */
+    pub n_success: u32,                     /* to/from KFD */
 }
 assert_layout!(UnmapMemoryFromGpuArgs, size = 24, align = 8);
 
@@ -485,7 +485,7 @@ pub struct GetDmabufInfoArgs {
     pub size: u64, /* from KFD */
     /// Ptr to user allocated memory, where the currntly set metadata
     /// will be copied to,
-    pub metadata_ptr: u64, /* to KFD */
+    pub metadata_ptr: *mut u32, /* to KFD */
     pub metadata_size: u32, /* to KFD (space allocated by user)
                              * from KFD (actual metadata size)
                              */
