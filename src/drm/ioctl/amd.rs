@@ -6,6 +6,22 @@ pub use structs::*;
 
 pub type CtxId = u32;
 pub type BoListHandle = u32;
+pub type CsHandle = u64;
+pub type FenceHandle = u64;
+pub type SyncObjHandle = u32;
+pub type SyncobjSeqNo = u64;
+
+/// Index for instance of HW IP
+/// You should most likely use 0
+pub type IpInstance = u32;
+
+/// Index for ring of an instance of HW IP
+pub type IpRing = u32;
+
+/// Fence / handle for the submission
+/// Fence number is incremented on each submission
+/// and it can repeat after a long while
+pub type CsFence = u64;
 
 macro_rules! define_amddrm_ioctl {
     ($(#[$meta:meta])* $fn_name:ident, $args_ty:ty, $num:literal, $ioctl_direction:tt) => {
@@ -31,6 +47,8 @@ define_amddrm_ioctl!(
 define_amddrm_ioctl!(gem_mmap, GemMmap, 0x01, WR);
 define_amddrm_ioctl!(ctx, Ctx, 0x02, WR);
 define_amddrm_ioctl!(bo_list, BoList, 0x03, WR);
+define_amddrm_ioctl!(cs, Cs, 0x04, WR);
 define_amddrm_ioctl!(info, Info, 0x05, W);
 define_amddrm_ioctl!(gem_metadata, GemMetadata, 0x06, WR);
 define_amddrm_ioctl!(gem_va, GemVa, 0x08, W);
+define_amddrm_ioctl!(cs_wait, CsWait, 0x09, WR);

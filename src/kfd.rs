@@ -3,7 +3,10 @@ use std::{
     os::fd::{AsFd, AsRawFd},
 };
 
-use crate::{drm::AmdgpuDrmFile, kfd::gpu_id::AsGpuId};
+use crate::{
+    drm::AmdgpuDrmFile,
+    kfd::{gpu_id::AsGpuId, mmap::RemapMmio},
+};
 
 pub mod apertures;
 pub mod ioctl;
@@ -106,7 +109,8 @@ define_kfd_version!(
     apertures::Apertures,
     apertures::AperturesNew,
     AvailableMemory,
-    AcquireVm
+    AcquireVm,
+    RemapMmio
 );
 
 /// In KFD commands use gpu_id to signal which device they should impact or use
@@ -234,13 +238,50 @@ impl<T: KfdFile> DerefMut for AcquiredVm<T> {
     }
 }
 
-// #[derive(Debug)]
-// pub enum AcquireVmError {
-//     NodeNotFound,
-//     WrongDrmFile,
-//     Unexpected(ioctl::Errno),
-// }
-//
+pub mod event {
+    use std::time::Duration;
+
+    use crate::kfd::ioctl::VirtualAddress;
+
+    #[macro_export]
+    /// Size in bytes of memory used for signals
+    /// which you can mmap
+    macro_rules! SIGNAL_PAGES_SIZE {
+        () => {
+            8 * ::amdgpu_linux_api::GPU_PAGE_SIZE!()
+        };
+    }
+
+    pub trait Event {
+        fn event_id(&self);
+    }
+
+    pub trait Signal: Event {
+        /// This only makes sence if we manually created the SignalPage in GTT
+        fn va(&self) -> VirtualAddress;
+    }
+
+    pub trait CpuAccessibleSignal: Signal {
+        fn set(&self);
+        fn reset(&self);
+    }
+
+    pub enum WaitTimout {
+        Instant,
+        Infinite,
+        DurationInMillis,
+    }
+
+    pub trait Eventolator {
+        fn create_signal(&self) -> impl CpuAccessibleSignal;
+        fn create_gpu_only_signal(&self) -> impl Signal;
+        fn hw_event(&self);
+        fn mem_event(&self);
+
+        fn wait_all_events(&self, events: &[impl Event], timeout: Duration);
+        fn wait_any_events(&self, events: &[impl Event], timeout: Duration);
+    }
+}
 // impl<'kfd> KfdNode<'kfd> {
 //     pub fn create_queue(self) -> (Self,) {
 //         (self,)

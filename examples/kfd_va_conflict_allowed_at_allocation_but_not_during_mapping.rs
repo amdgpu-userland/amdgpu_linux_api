@@ -64,7 +64,7 @@ fn main() {
             file.as_raw_fd(),
             &mut ioctl::MapMemoryToGpuArgs {
                 handle: alloc_args.handle,
-                device_ids_array_ptr: &raw const device_ids as u64,
+                device_ids_array_ptr: device_ids.as_ptr(),
                 n_devices: device_ids.len() as u32,
                 n_success: 0,
             },
@@ -96,7 +96,7 @@ fn main() {
             file.as_raw_fd(),
             &mut ioctl::MapMemoryToGpuArgs {
                 handle: alloc_args2.handle,
-                device_ids_array_ptr: &raw const device_ids as u64,
+                device_ids_array_ptr: device_ids.as_ptr(),
                 n_devices: device_ids.len() as u32,
                 n_success: 0,
             },

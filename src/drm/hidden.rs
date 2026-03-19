@@ -1,4 +1,5 @@
 use std::{
+    fs::OpenOptions,
     os::fd::{AsRawFd, OwnedFd, RawFd},
     path::Path,
 };
@@ -10,7 +11,11 @@ pub(super) fn open_file_check_version<P: AsRef<Path>>(
     major: i32,
     minor: i32,
 ) -> Result<OwnedFd, OpenError> {
-    let file = std::fs::File::open(path).map_err(OpenError::OpeningFile)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(OpenError::OpeningFile)?;
 
     let mut str_buffer = [0u8; 4096];
     let (driver_name, rest) = str_buffer.split_at_mut(1024);

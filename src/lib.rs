@@ -1,6 +1,13 @@
 #[macro_use]
 mod ioctl_helpers;
 
+#[macro_export]
+macro_rules! GPU_PAGE_SIZE {
+    () => {
+        4096
+    };
+}
+
 /// Think OpenGL and Vulkan
 pub mod drm;
 
@@ -18,3 +25,11 @@ pub mod drm;
 /// Which shouldn't matter if amdgpu code didn't
 /// break userspace between versions.
 pub mod kfd;
+
+/// Defines packets for different SDMA versions
+///
+/// These packets are then to be writen to a ring buffer
+/// and read by the gpu
+///
+/// Hopefully a packet has a fixed size
+pub mod sdma;

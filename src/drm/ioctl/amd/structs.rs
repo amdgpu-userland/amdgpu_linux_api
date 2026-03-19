@@ -1,6 +1,9 @@
-use crate::drm::{
-    GemHandle, SyncobjHandle,
-    ioctl::amd::{BoListHandle, CtxId},
+use crate::{
+    drm::{
+        self, GemHandle, SyncobjHandle,
+        ioctl::amd::{BoListHandle, CsFence, CtxId, FenceHandle, IpInstance, IpRing, SyncobjSeqNo},
+    },
+    kfd::ioctl::VirtualAddress,
 };
 
 #[repr(C)]
@@ -274,6 +277,213 @@ pub union BoList {
 }
 assert_layout!(BoList, size = 24, align = 8);
 
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub enum ChunkId {
+    /// CsChunkIb
+    /// You can have multiple of these in a submission
+    ///
+    /// There is a limit of at most 4 IBs (jobs) in a gang (submission)
+    ///
+    /// For some rings the content might be validated (parse_cs) or changed (patch_cs_in_place)
+    /// by ring driver
+    IB = 0x01,
+    /// CsChunkFence
+    /// You only want one of these in a submission
+    ///
+    /// Some rings may not support user fences
+    FENCE = 0x02,
+    /// CsChunkDep
+    /// You can have multiple of these in a submission
+    /// Accepts an array, just set length_in_dw to array len * sizeof(ChunkDep) / 4
+    DEPENDENCIES = 0x03,
+    /// CsChunkSem
+    /// You can have multiple of these in a submission
+    /// Accepts an array, just set length_in_dw to array len * sizeof(ChunkSem) / 4
+    SYNCOBJ_IN = 0x04,
+    /// CsChunkSem
+    /// You can have only one of these in a submission and you have to choose between
+    /// this and SYNCOBJ_TIMELINE_SIGNAL
+    /// Accepts an array, just set length_in_dw to array len * sizeof(ChunkSem) / 4
+    SYNCOBJ_OUT = 0x05,
+    /// BoListIn
+    /// You can have only one of these in a submission
+    BO_HANDLES = 0x06,
+    /// CsChunkDep
+    /// You can have multiple of these in a submission
+    /// Accepts an array, just set length_in_dw to array len * sizeof(ChunkDep) / 4
+    SCHEDULED_DEPENDENCIES = 0x07,
+    /// CsChunkSyncobj
+    /// You can have multiple of these in a submission
+    /// Accepts an array, just set length_in_dw to array len * sizeof(ChunkSyncobj) / 4
+    SYNCOBJ_TIMELINE_WAIT = 0x08,
+    /// CsChunkSyncobj
+    /// You only want one of these in a submission and you have to choose between
+    /// this and SYNCOBJ_OUT
+    /// Accepts an array, just set length_in_dw to array len * sizeof(ChunkSyncobj) / 4
+    SYNCOBJ_TIMELINE_SIGNAL = 0x09,
+    /// CsChunkCpGfxShadow
+    /// You only want one of these in a submission
+    /// Used by gfx11
+    CP_GFX_SHADOW = 0x0a,
+}
+
+pub mod amdgpu_ib_flag {
+    pub type Type = u32;
+    /// This IB should be submitted to Constant Engine
+    /// otherwise to drawing engine
+    pub const CE: Type = 1 << 0;
+    /// Preamble flag, IB could be dropped if no context switch
+    pub const PREAMBLE: Type = 1 << 1;
+    /// IB should set Pre_enb bit if PREEMPT flag detected
+    ///
+    /// For ID_GFX only one IB can have this flag
+    pub const PREEMPT: Type = 1 << 2;
+    /// IB fence should do L2 writeback but not invalidate any shader caches
+    pub const TC_WB_NOT_INVALIDATE: Type = 1 << 3;
+    /// Set GDS_COMPUTE_MAX_WAVE_ID = DEFAULT before PACKET3_INDIRECT_BUFFER,
+    /// resetting wave ID counters for the IB
+    pub const RESET_GDS_MAX_WAVE_ID: Type = 1 << 4;
+    /// Flag the IB as secure (TMZ)
+    pub const SECURE: Type = 1 << 5;
+    /// Tell KMD to flush and invalidate caches
+    pub const EMIT_MEM_SYNC: Type = 1 << 6;
+}
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub enum HwIp {
+    GFX = 0,
+    COMPUTE = 1,
+    DMA = 2,
+    UVD = 3,
+    VCE = 4,
+    UVD_ENC = 5,
+    VCN_DEC = 6,
+    /// From VCN4, AMDGPU_HW_IP_VCN_ENC is re-used to support
+    /// both encoding and decoding jobs.
+    VCN_ENC = 7,
+    VCN_JPEG = 8,
+    VPE = 9,
+    NUM = 10,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsChunkIb {
+    pub _pad: u32,
+    pub flags: amdgpu_ib_flag::Type,
+    /// Virtual address to memory with hw_ip specific instructions to begin execution
+    /// It must be already mapped
+    pub va_start: u64,
+    /// Size of submission in bytes, must be 4 bytes aligned
+    pub ib_bytes: u32,
+    /// There is a limit of using at most 4 different rings (entities) in a submission
+    pub ip_type: HwIp,
+    pub ip_instance: IpInstance,
+    pub ring: IpRing,
+}
+assert_layout!(CsChunkIb, size = 32, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsChunkDep {
+    pub ip_type: HwIp,
+    pub ip_instance: IpInstance,
+    pub ring: IpRing,
+    pub ctx_id: CtxId,
+    pub handle: FenceHandle,
+}
+assert_layout!(CsChunkDep, size = 24, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsChunkFence {
+    /// GEM must have PAGE_SIZE size
+    /// It cannot be a userptr GEM
+    pub handle: GemHandle,
+    /// Must be a valid offset (in bytes) to a u64 in provided GEM
+    ///
+    /// It best if you align it too, as it's hw_ip and generation
+    /// dependant if you get undefined behaviour
+    pub offset: u32,
+}
+assert_layout!(CsChunkFence, size = 8, align = 4);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsChunkSem {
+    pub handle: SyncobjHandle,
+}
+assert_layout!(CsChunkSem, size = 4, align = 4);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsChunkSyncobj {
+    pub handle: SyncobjHandle,
+    /// DRM_SYNCOBJ_WAIT_FLAGS_ for SyncoobjWait
+    /// Unused for SyncobjSignal
+    pub flags: u32,
+    pub point: SyncobjSeqNo,
+}
+assert_layout!(CsChunkSyncobj, size = 16, align = 8);
+
+pub mod cs_chunk_cp_gfx_shadow_flags {
+    pub type Type = u64;
+    pub const INIT_SHADOW: Type = 0x1;
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsChunkCpGfxShadow {
+    pub shadow_va: VirtualAddress,
+    pub csa_va: VirtualAddress,
+    pub gds_va: VirtualAddress,
+    pub flags: cs_chunk_cp_gfx_shadow_flags::Type,
+}
+assert_layout!(CsChunkCpGfxShadow, size = 32, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsChunk {
+    pub chunk_id: ChunkId,
+    /// Size of the struct chunk_data points to
+    /// Unit: dword (4bytes)
+    pub length_dw: u32,
+    /// Ptr to struct depending on chunk_id
+    pub chunk_data: u64,
+}
+assert_layout!(CsChunk, size = 16, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsIn {
+    pub ctx_id: CtxId,
+    pub bo_list_handle: BoListHandle,
+    pub num_chunks: u32,
+    pub flags: u32,
+    /// Array of pointers to CsChunk
+    /// The order of most chunks matters
+    pub chunks: *const *const CsChunk,
+}
+assert_layout!(CsIn, size = 24, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct CsOut {
+    pub handle: CsFence,
+}
+assert_layout!(CsOut, size = 8, align = 8);
+
+#[repr(C)]
+pub union Cs {
+    pub in_: CsIn,
+    pub out: CsOut,
+}
+assert_layout!(Cs, size = 24, align = 8);
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ModeCrtc {
@@ -454,3 +664,35 @@ pub struct GemVa {
     pub input_fence_syncobj_handles: *const SyncobjHandle,
 }
 assert_layout!(GemVa, size = 64, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CsWaitIn {
+    /// Command submission handle.
+    /// - `0` means none to wait for
+    /// - `!0u64` means wait for the latest sequence number
+    pub handle: CsFence,
+    /// Absolute timeout in nanoseconds to wait
+    pub timeout: u64,
+    pub ip_type: HwIp,
+    pub ip_instance: IpInstance,
+    pub ring: IpRing,
+    pub ctx_id: CtxId,
+}
+assert_layout!(CsWaitIn, size = 32, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CsWaitOut {
+    /// TODO: To be verified yet
+    /// CS status: `0` = CS completed, `1` = timeout
+    pub status: u64,
+}
+assert_layout!(CsWaitOut, size = 8, align = 8);
+
+#[repr(C)]
+pub union CsWait {
+    pub in_: CsWaitIn,
+    pub out: CsWaitOut,
+}
+assert_layout!(CsWait, size = 32, align = 8);

@@ -191,7 +191,7 @@ pub struct SetEventArgs {
 assert_layout!(SetEventArgs, size = 8, align = 4);
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct MemoryExceptionFailure {
     /// Page not present or supervisor privilege
     pub not_present: u32,
@@ -213,7 +213,7 @@ pub mod hsa_mem_exception {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct HsaMemoryExceptionData {
     pub failure: MemoryExceptionFailure,
     pub va: VirtualAddress,
@@ -236,7 +236,7 @@ pub mod hw_reset_cause {
     pub const ECC: ResetCause = 1;
 }
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct HsaHwExceptionData {
     pub reset_type: hw_reset_type::ResetType,
     pub reset_cause: hw_reset_cause::ResetCause,
@@ -246,7 +246,7 @@ pub struct HsaHwExceptionData {
 assert_layout!(HsaHwExceptionData, size = 16, align = 4);
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HsaSignalEventData {
     pub last_event_age: u64,
 }
