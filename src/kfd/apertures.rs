@@ -32,9 +32,7 @@ pub trait Apertures: KfdFile {
 
         #[expect(deprecated)]
         if let Err(e) = unsafe { ioctl::get_process_apertures(fd, &mut args) } {
-            match e {
-                _ => panic!("unexpected get_process_apertures: {e}"),
-            }
+            panic!("unexpected get_process_apertures: {e}")
         }
 
         *buffer = args.process_apertures;

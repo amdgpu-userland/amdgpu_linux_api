@@ -13,6 +13,9 @@ use hidden::open_file_check_version;
 use hidden::verify_if_drm_fd_is_authenticated;
 
 /// Any /dev/dri/* file
+///
+/// # SAFETY
+/// Any file accepting DRM ioctls
 pub unsafe trait DrmFile: AsFd {}
 
 /// Any /dev/dri/card%d file
@@ -20,12 +23,21 @@ pub unsafe trait DrmFile: AsFd {}
 /// When opening a primary client it might be already a master and therefore authenticated
 /// but we need to make sure.
 /// Use try_from or try_into to get MasterPrimaryClient.
+///
+/// # SAFETY
+/// Must be a primary client
 pub unsafe trait DrmPrimaryFile: DrmFile {}
 
 /// Any /dev/dri/renderD%d file
+///
+/// # SAFETY
+/// Must be a render client
 pub unsafe trait DrmRenderFile: DrmFile {}
 
 /// Any /dev/dri/* file which is confirmed to be from amdgpu
+///
+/// # SAFETY
+/// Must be a drm file handled by amdgpu driver
 pub unsafe trait AmdgpuDrmFile: DrmFile {}
 
 pub struct AmdgpuDrmRender3_64 {
@@ -181,9 +193,8 @@ pub trait AmdgpuGemCreate: AmdgpuDrmFile {
             },
         };
         if let Err(e) = unsafe { ioctl::amd::gem_create(fd, &mut args) } {
-            match e {
-                _ => todo!(),
-            }
+            let _ = e;
+            todo!()
         }
     }
     fn gem_create_gtt() {}

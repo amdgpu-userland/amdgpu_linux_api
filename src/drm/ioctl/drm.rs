@@ -23,15 +23,38 @@ macro_rules! define_drm_ioctl {
         );
     };
 }
-define_drm_ioctl!(version, Version, 0x0, WR);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    version, Version, 0x0, WR);
 define_drm_ioctl!(
     /// Almost deprecated
     ///
     /// if idx==0 it will populate some fields
     /// which you can use to easily determine if this client is authenticated
     /// EINVAL otherwise
+    ///
+    /// # SAFETY
+    /// todo
     get_client, Client, 0x05, WR);
-define_drm_ioctl!(set_master, 0x1e);
-define_drm_ioctl!(drop_master, 0x1f);
-define_drm_ioctl!(prime_handle_to_fd, PrimeHandle, 0x2d, WR);
-define_drm_ioctl!(prime_fd_to_handle, PrimeHandle, 0x2e, WR);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    set_master, 0x1e);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    drop_master, 0x1f);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    prime_handle_to_fd, PrimeHandle, 0x2d, WR);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    prime_fd_to_handle, PrimeHandle, 0x2e, WR);

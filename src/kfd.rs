@@ -24,6 +24,8 @@ pub const KFD_FILE_PATH: &str = "/dev/kfd";
 /// Except for ptrace tracing process, all use of kfd file is restricted to the process, which
 /// opened it.
 ///
+/// # SAFETY
+/// Must be a valid kfd file descriptor, opened for reading and writing
 pub unsafe trait KfdFile: AsFd {}
 
 #[derive(Debug)]
