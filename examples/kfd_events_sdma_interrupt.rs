@@ -79,13 +79,13 @@ fn main() {
     assert_map_memory(fd, kfd_mem_handle, &[dev.gpu_id]);
 
     let mut ring_mem = [0u32; 1024];
-    let ring_handle = alloc_and_map_userptr(fd, &ring_mem, 0x20_000, dev.gpu_id);
+    let _ring_handle = alloc_and_map_userptr(fd, &ring_mem, 0x20_000, dev.gpu_id);
 
     let mut controlls = [0u32; 1024];
-    let controlls_handle = alloc_and_map_userptr(fd, &controlls, 0x30_000, dev.gpu_id);
+    let _controlls_handle = alloc_and_map_userptr(fd, &controlls, 0x30_000, dev.gpu_id);
 
-    let mut ctx_save_restore = [0u32; 2 * 1024];
-    let ctx_save_handle = alloc_and_map_userptr(fd, &ctx_save_restore, 0x40_000, dev.gpu_id);
+    let ctx_save_restore = [0u32; 2 * 1024];
+    let _ctx_save_handle = alloc_and_map_userptr(fd, &ctx_save_restore, 0x40_000, dev.gpu_id);
 
     let mut args = CreateEventArgs {
         event_page_offset: (u64::from(dev.gpu_id) << 32) | kfd_mem_handle,

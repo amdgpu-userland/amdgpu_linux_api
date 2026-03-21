@@ -13,12 +13,12 @@ use amdgpu_linux_api::{
     kfd::ioctl::VirtualAddress,
     sdma,
 };
+use std::os::fd::AsFd;
 use std::{
     ffi::c_void,
     os::fd::{AsRawFd, RawFd},
     time::Duration,
 };
-use std::{io::stdin, os::fd::AsFd};
 
 fn alloc_and_map_vram(fd: RawFd, size: usize) -> (GemHandle, *mut c_void) {
     let mut args = ioctl::amd::GemCreate {

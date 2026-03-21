@@ -6,8 +6,8 @@ use amdgpu_linux_api::drm::{
         amd::{GemCreateIn, GemMmapIn, gem_flags},
     },
 };
+use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
-use std::{io::stdin, os::fd::AsFd};
 
 fn main() {
     let drm_file = AmdgpuDrmRender3_64::open(128).unwrap();

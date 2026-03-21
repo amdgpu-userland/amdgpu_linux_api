@@ -1,16 +1,12 @@
 #![feature(ptr_as_ref_unchecked)]
-use amdgpu_linux_api::drm::ioctl::amd::*;
-use amdgpu_linux_api::drm::ioctl::drm::*;
 use amdgpu_linux_api::drm::*;
 use amdgpu_linux_api::kfd::apertures::*;
 use amdgpu_linux_api::kfd::ioctl::*;
 use amdgpu_linux_api::kfd::mmap::RemapMmio;
 use amdgpu_linux_api::kfd::*;
-use libc::sleep;
 use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
 use std::os::fd::RawFd;
-use std::time::Duration;
 
 fn assert_map_memory(fd: RawFd, handle: MemoryHandle, dev_ids: &[GpuId]) {
     let mut args = MapMemoryToGpuArgs {
@@ -67,6 +63,7 @@ fn main() {
     println!("Allocating Vram in kfd for rptr and wptr, handle: {controlls_handle}");
 
     let mut ring_mem = [0u32; 1024 * 4];
+    ring_mem[8] = 0xCAF;
     let ring_buff_size = size_of_val(&ring_mem);
     let ring_buff_va = controlls_va + u64::try_from(controlls_size).unwrap();
     let mut args = AllocMemoryOfGpuArgs {
@@ -105,7 +102,6 @@ fn main() {
     println!("Before creating queue");
     controlls_mem[rptr_idx!()] = 0;
     controlls_mem[wptr_idx!()] = 64;
-    ring_mem[8] = 0xCAF;
     mmio.flush_hdp_mem();
 
     let mut args = CreateQueueArgs {
@@ -148,17 +144,6 @@ fn main() {
 
     println!("Doorbell: {}", unsafe { doorbell.read_volatile() });
     println!("Rptr: {}", controlls_mem[rptr_idx!()]);
-    // controlls_mem[wptr_idx!()] = 64;
-    // assert_eq!(controlls_mem[wptr_idx!()], 64);
-    // unsafe { doorbell.write(64) };
 
     let _ = std::io::stdin().read_line(&mut String::new());
-    // let mut cntr = 0;
-    // while controlls_mem[0] < 64 && cntr < 10 {
-    //     std::thread::sleep(Duration::from_millis(5));
-    //     cntr += 1;
-    // }
-    // if cntr == 10 {
-    //     println!("Timiout waiting for queue")
-    // }
 }

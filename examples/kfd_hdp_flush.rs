@@ -9,6 +9,7 @@ use nix::sys::signal::*;
 static STOP: AtomicBool = AtomicBool::new(false);
 
 extern "C" fn sig_handler(sig: libc::c_int) {
+    let _ = sig;
     STOP.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 

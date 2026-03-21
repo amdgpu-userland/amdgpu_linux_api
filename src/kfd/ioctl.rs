@@ -26,11 +26,11 @@ define_amdkfd_ioctl!(
     /// Removes a command queue
     destroy_queue, DestroyQueueArgs, 0x03, WR);
 define_amdkfd_ioctl!(
-    #[deprecated(
-        since = "gfx10",
-        note = "It has use for gfx9. For newer asics use per allocation flags."
-    )]
+    #[deprecated]
     /// Set caching policy for all memory types for gfx9
+    ///
+    /// Deprecated since gfx10.
+    /// It has use for gfx9. For newer asics use per allocation flags.
     set_memory_policy,
     SetMemoryPolicyArgs,
     0x04,
@@ -40,8 +40,11 @@ define_amdkfd_ioctl!(
     /// Get simple counters, useful for profiling
     get_clock_counters, GetClockCountersArgs, 0x05, WR);
 define_amdkfd_ioctl!(
-    #[deprecated(since = "kfd 1.2", note = "Use `get_process_apertures_new` instead")]
+    #[deprecated]
     /// Get available devices and their virtual address space ranges
+    ///
+    /// Deprecated since kfd 1.2
+    /// Use `get_process_apertures_new` instead
     get_process_apertures,
     GetProcessAperturesArgs,
     0x06,

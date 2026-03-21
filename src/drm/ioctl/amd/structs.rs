@@ -1,6 +1,6 @@
 use crate::{
     drm::{
-        self, GemHandle, SyncobjHandle,
+        GemHandle, SyncobjHandle,
         ioctl::amd::{BoListHandle, CsFence, CtxId, FenceHandle, IpInstance, IpRing, SyncobjSeqNo},
     },
     kfd::ioctl::VirtualAddress,
