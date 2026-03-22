@@ -11,6 +11,7 @@ use crate::{
 pub mod apertures;
 pub mod ioctl;
 pub mod mmap;
+pub mod queue;
 
 pub const KFD_FILE_PATH: &str = "/dev/kfd";
 

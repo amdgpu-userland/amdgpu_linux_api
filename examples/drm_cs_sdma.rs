@@ -122,15 +122,15 @@ fn main() {
 
     let fence_pkt = sdma::v5::Fence {
         addr: u64::from(0x10_000u32 + 0x0_FFC),
-        value: 1,
+        data: 1,
         mtype: sdma::v5::Mtype::Uncached,
         ..Default::default()
     };
-    [vram[0], vram[1], vram[2], vram[3]] = fence_pkt.enc();
+    [vram[0], vram[1], vram[2], vram[3]] = fence_pkt.encode();
     let int_pkt = sdma::v5::Trap {
-        context_id: 0x0_FFC,
+        int_context: 0x0_FFC,
     };
-    [vram[4], vram[5]] = int_pkt.enc();
+    [vram[4], vram[5]] = int_pkt.encode();
 
     let ctx_id = create_ctx(fd);
     let bo_list = create_bo_list(fd, &[handle]);

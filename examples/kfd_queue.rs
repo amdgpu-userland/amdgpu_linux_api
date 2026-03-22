@@ -44,9 +44,7 @@ fn main() {
     let mut mmio = kfd.mmio(&devs[0]);
 
     let controlls_va = 0x10_000;
-    let rptr_va = controlls_va + rptr_idx!() * 4;
-    let wptr_va = controlls_va + wptr_idx!() * 4;
-    let mut controlls_mem = [0u32; 1024];
+    let mut controlls_mem = [0u64; 512];
     let controlls_size = size_of_val(&controlls_mem);
     let mut args = AllocMemoryOfGpuArgs {
         va_addr: controlls_va,
@@ -59,11 +57,19 @@ fn main() {
     let res = unsafe { alloc_memory_of_gpu(fd, &mut args) };
     assert!(res.is_ok());
 
-    let controlls_handle = args.handle;
-    println!("Allocating Vram in kfd for rptr and wptr, handle: {controlls_handle}");
+    let (rptr, wptr) = controlls_mem.split_at_mut(4);
+    let rptr = &mut rptr[0];
+    let wptr = &mut wptr[0];
+    *rptr = 0;
+    *wptr = 64;
+    let rptr: *mut u64 = rptr;
+    let wptr: *mut u64 = wptr;
 
-    let mut ring_mem = [0u32; 1024 * 4];
-    ring_mem[8] = 0xCAF;
+    let controlls_handle = args.handle;
+    println!("Allocating controlls in kfd for rptr and wptr, handle: {controlls_handle}");
+
+    let mut ring_mem = [0u32; 1024];
+    ring_mem[0] = 0xCAF;
     let ring_buff_size = size_of_val(&ring_mem);
     let ring_buff_va = controlls_va + u64::try_from(controlls_size).unwrap();
     let mut args = AllocMemoryOfGpuArgs {
@@ -100,24 +106,20 @@ fn main() {
     assert_map_memory(fd, ctx_save_restore_handle, &dev_ids);
 
     println!("Before creating queue");
-    controlls_mem[rptr_idx!()] = 0;
-    controlls_mem[wptr_idx!()] = 64;
-    mmio.flush_hdp_mem();
-
     let mut args = CreateQueueArgs {
-        ring_base_address: ring_buff_va,
-        write_pointer_address: wptr_va,
-        read_pointer_address: rptr_va,
+        ring_base_address: ring_mem.as_ptr(),
+        write_pointer_address: wptr.cast(),
+        read_pointer_address: rptr.cast(),
         doorbell_offset: 0,
         ring_size: ring_buff_size as u32,
         gpu_id,
         queue_type: queue_type::SDMA,
-        queue_percentage: 0,
+        queue_percentage: 100,
         queue_priority: 0xf,
         queue_id: 0,
-        eop_buffer_address: 0,
+        eop_buffer_address: std::ptr::null_mut(),
         eop_buffer_size: 0,
-        ctx_save_restore_address: ctx_save_restore_va,
+        ctx_save_restore_address: std::ptr::null_mut(),
         ctx_save_restore_size: ctx_save_restore_size,
         ctl_stack_size: 0x1_000,
         sdma_engine_id: 0,
@@ -143,7 +145,7 @@ fn main() {
     let doorbell: *mut u64 = unsafe { doorbells.byte_offset(doorbell_idx as isize).cast() };
 
     println!("Doorbell: {}", unsafe { doorbell.read_volatile() });
-    println!("Rptr: {}", controlls_mem[rptr_idx!()]);
+    println!("Rptr: {}", unsafe { rptr.read_volatile() });
 
-    let _ = std::io::stdin().read_line(&mut String::new());
+    //let _ = std::io::stdin().read_line(&mut String::new());
 }

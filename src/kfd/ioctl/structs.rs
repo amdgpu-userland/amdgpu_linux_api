@@ -35,24 +35,28 @@ pub mod queue_limits {
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct CreateQueueArgs {
-    pub ring_base_address: u64,     /* to KFD */
-    pub write_pointer_address: u64, /* to KFD */
-    pub read_pointer_address: u64,  /* to KFD */
-    pub doorbell_offset: u64,       /* from KFD */
+    /// Must be aligned to 256
+    pub ring_base_address: *const u32, /* to KFD */
+    pub write_pointer_address: *const u32, /* to KFD */
+    pub read_pointer_address: *mut u32,    /* to KFD */
+    pub doorbell_offset: u64,              /* from KFD */
 
-    pub ring_size: u32,               /* to KFD */
+    /// In bytes, must be power of 2, at least 1024
+    pub ring_size: u32, /* to KFD */
     pub gpu_id: GpuId,                /* to KFD */
     pub queue_type: queue_type::Type, /* to KFD */
-    pub queue_percentage: u32,        /* to KFD */
+    /// Dont set to 0
+    /// Set to anything else for example 100
+    pub queue_percentage: u32, /* to KFD */
     pub queue_priority: u32,          /* to KFD */
     pub queue_id: QueueId,            /* from KFD */
 
-    pub eop_buffer_address: u64,       /* to KFD */
-    pub eop_buffer_size: u64,          /* to KFD */
-    pub ctx_save_restore_address: u64, /* to KFD */
-    pub ctx_save_restore_size: u32,    /* to KFD */
-    pub ctl_stack_size: u32,           /* to KFD */
-    pub sdma_engine_id: u32,           /* to KFD */
+    pub eop_buffer_address: *mut u32,       /* to KFD */
+    pub eop_buffer_size: u64,               /* to KFD */
+    pub ctx_save_restore_address: *mut u32, /* to KFD */
+    pub ctx_save_restore_size: u32,         /* to KFD */
+    pub ctl_stack_size: u32,                /* to KFD */
+    pub sdma_engine_id: u32,                /* to KFD */
     pub pad: u32,
 }
 assert_layout!(CreateQueueArgs, size = 96, align = 8);
@@ -139,7 +143,7 @@ assert_layout!(GetProcessAperturesArgs, size = 400, align = 8);
 #[repr(C)]
 pub struct UpdateQueueArgs {
     /// Ring base address (to KFD)
-    pub ring_base_address: u64,
+    pub ring_base_address: *const u64,
     /// Queue ID (to KFD)
     pub queue_id: QueueId,
     /// Ring size (to KFD)

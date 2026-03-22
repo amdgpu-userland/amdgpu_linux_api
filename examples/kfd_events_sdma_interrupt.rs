@@ -84,7 +84,7 @@ fn main() {
     let mut controlls = [0u32; 1024];
     let _controlls_handle = alloc_and_map_userptr(fd, &controlls, 0x30_000, dev.gpu_id);
 
-    let ctx_save_restore = [0u32; 2 * 1024];
+    let mut ctx_save_restore = [0u32; 2 * 1024];
     let _ctx_save_handle = alloc_and_map_userptr(fd, &ctx_save_restore, 0x40_000, dev.gpu_id);
 
     let mut args = CreateEventArgs {
@@ -127,22 +127,24 @@ fn main() {
     assert!(res.is_ok());
     let memory_event = args;
 
-    let wptr = &mut controlls[1];
+    let (a, b) = controlls.split_at_mut(4);
+    let wptr = &mut a[0];
+    let rptr = &mut b[0];
     let mut fence = sdma::v5::Fence {
         addr: u64::from(0x10_000 + signal_event * 8),
-        value: 1,
+        data: 1,
         mtype: sdma::v5::Mtype::Uncached,
         ..Default::default()
     };
-    ring_mem[0..4].copy_from_slice(&fence.enc());
+    ring_mem[0..4].copy_from_slice(&fence.encode());
     fence.addr += 4;
-    fence.value = 0;
-    ring_mem[4..8].copy_from_slice(&fence.enc());
+    fence.data = 0;
+    ring_mem[4..8].copy_from_slice(&fence.encode());
 
     let trap = sdma::v5::Trap {
-        context_id: signal_event,
+        int_context: signal_event,
     };
-    ring_mem[8..10].copy_from_slice(&trap.enc());
+    ring_mem[8..10].copy_from_slice(&trap.encode());
 
     *wptr += 10;
 
@@ -155,19 +157,19 @@ fn main() {
     assert!(res.is_ok());
 
     let mut args = CreateQueueArgs {
-        ring_base_address: 0x20_000,
-        write_pointer_address: 0x30_004,
-        read_pointer_address: 0x30_000,
+        ring_base_address: ring_mem.as_ptr(),
+        write_pointer_address: wptr,
+        read_pointer_address: rptr,
         doorbell_offset: 0,
-        ring_size: 4096,
+        ring_size: size_of_val(&ring_mem) as u32,
         gpu_id: dev.gpu_id,
         queue_type: queue_type::SDMA_BY_ENG_ID,
         queue_percentage: 0,
         queue_priority: 0xf,
         queue_id: 0,
-        eop_buffer_address: 0,
+        eop_buffer_address: std::ptr::null_mut(),
         eop_buffer_size: 0,
-        ctx_save_restore_address: 0x40_000,
+        ctx_save_restore_address: ctx_save_restore.as_mut_ptr(),
         ctx_save_restore_size: 0x2_000,
         ctl_stack_size: 0x1_000,
         sdma_engine_id: 0,

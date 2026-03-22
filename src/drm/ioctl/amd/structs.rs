@@ -241,7 +241,7 @@ pub struct BoListIn {
     /// Number of BOs in bo_info_ptr
     pub bo_number: u32,
     /// Size of each element describing BO
-    /// size_of::<BoListEntry>()
+    /// `size_of::<BoListEntry>()`
     pub bo_info_size: u32,
     /// Pointer to array describing BOs
     ///
