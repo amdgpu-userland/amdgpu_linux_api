@@ -8,3 +8,4 @@ libc = "0.2.182"
 
 [dev-dependencies]
 nix = { version = "0.31.2", features = ["signal"] }
+uds = { version = "0.4.2", default-features = false }

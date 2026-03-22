@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "nix",
+ "uds",
 ]
 
 [[package]]
@@ -43,5 +44,14 @@ dependencies = [
  "bitflags",
  "cfg-if",
  "cfg_aliases",
+ "libc",
+]
+
+[[package]]
+name = "uds"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "885c31f06fce836457fe3ef09a59f83fe8db95d270b11cd78f40a4666c4d1661"
+dependencies = [
  "libc",
 ]

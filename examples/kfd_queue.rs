@@ -2,7 +2,6 @@
 use amdgpu_linux_api::drm::*;
 use amdgpu_linux_api::kfd::apertures::*;
 use amdgpu_linux_api::kfd::ioctl::*;
-use amdgpu_linux_api::kfd::mmap::RemapMmio;
 use amdgpu_linux_api::kfd::*;
 use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
@@ -20,17 +19,6 @@ fn assert_map_memory(fd: RawFd, handle: MemoryHandle, dev_ids: &[GpuId]) {
     assert!(args.n_success == args.n_devices);
 }
 
-macro_rules! rptr_idx {
-    () => {
-        0
-    };
-}
-macro_rules! wptr_idx {
-    () => {
-        1
-    };
-}
-
 fn main() {
     let kfd = Kfd1_18::open().unwrap();
     let devs = kfd.all_apertures().unwrap();
@@ -41,7 +29,6 @@ fn main() {
     };
     let gpu_id = devs[0].gpu_id;
     let fd = kfd.as_fd().as_raw_fd();
-    let mut mmio = kfd.mmio(&devs[0]);
 
     let controlls_va = 0x10_000;
     let mut controlls_mem = [0u64; 512];
