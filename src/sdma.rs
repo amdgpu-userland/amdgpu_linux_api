@@ -320,6 +320,8 @@ pub mod v2 {}
 pub mod v3 {}
 /// Also known as Vega (GCN 5)
 pub mod v4 {}
+
+pub mod v4_4 {}
 /// Also known as Navi (Rdna 1)
 ///
 /// See `kernel/drivers/gpu/drm/amd/amdgpu/navi10_sdma_pkt_open.h`

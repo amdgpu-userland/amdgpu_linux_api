@@ -1,8 +1,10 @@
+#![allow(incomplete_features)]
 #![feature(const_trait_impl)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
 #![feature(const_try)]
 #![feature(const_index)]
+#![feature(guard_patterns)]
 
 #[macro_use]
 mod ioctl_helpers;
@@ -84,3 +86,5 @@ pub mod kfd;
 /// enum to distinguish which packet type it is. And enums don't like generic variants with
 /// unpredictable types (lengths).
 pub mod sdma;
+
+pub mod sdma_new;
