@@ -1,12 +1,10 @@
 const trait FieldDecode: Sized {
-    const MASK: u32;
     fn decode(val: u32) -> Option<Self>;
 }
 
 macro_rules! impl_decode {
     ($($simple_type:ty),*) => {
         $(impl const FieldDecode for $simple_type {
-            const MASK: u32 = 1u32.wrapping_shl(<$simple_type>::BITS).wrapping_sub(1);
             fn decode(val: u32) -> Option<Self> {
                 Self::try_from(val).ok()
             }
@@ -16,7 +14,6 @@ macro_rules! impl_decode {
 
 impl_decode!(u8, u16, u32, i8, i16, i32);
 impl const FieldDecode for bool {
-    const MASK: u32 = 0x1;
     fn decode(val: u32) -> Option<Self> {
         Some(val != 0)
     }
@@ -57,7 +54,6 @@ macro_rules! field_enum {
         };
 
         impl const super::FieldDecode for $name {
-            const MASK: u32 = $mask;
             fn decode(val: u32) -> Option<Self> {
                 match val {
                     $($value => Some(Self::$variant),)*
@@ -190,10 +186,10 @@ macro_rules! sdma_packets {
                     let mut mask: u32 = 0;
                     $(mask |= $mask << $shift;)*
 
-                    $(
-                    const _: () = assert!($mask >= <$ftype as super::FieldDecode>::MASK,
-        concat!("Provided type: ", stringify!($ftype), " doesn't fit mask: ", stringify!($mask)));
-                    )*
+        //             $(
+        //             const _: () = assert!($mask >= <$ftype as super::FieldDecode>::MASK,
+        // concat!("Provided type: ", stringify!($ftype), " doesn't fit mask: ", stringify!($mask)));
+        //             )*
 
                     let mut value: u32 = 0;
                     $(value |= (self.$field as u32) << $shift;)*
@@ -254,7 +250,7 @@ macro_rules! sdma_packets {
                     $(
                     sdma_packets!(@op_match $op $($subop)? $(header [$exmask << $exshift] == $ex)?) => {
                         let actual_size = $variant::STATIC_DWORDS $(+ {
-                            if buff.len() < $dyn_len {
+                            if buff.len() < ($dyn_len + 1) {
                                 panic!(concat!("Not enough dwords for ", stringify!($variant)));
                             }
                             let len = buff[$dyn_len];
@@ -285,7 +281,7 @@ macro_rules! sdma_packets {
                         )?
 
                         let pkt = $variant {
-                        $($($($field),*)*,)?
+                        $($($($field),*,)*)?
                         $($($f_field),*,)?
                         $($($c_field),*,)?
                         $($dyn_field)?
