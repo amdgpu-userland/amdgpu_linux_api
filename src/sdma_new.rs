@@ -1,19 +1,19 @@
-pub type Word = u32;
-
 const trait FieldDecode: Sized {
     const MASK: u32;
     fn decode(val: u32) -> Option<Self>;
 }
+
 macro_rules! impl_decode {
     ($($simple_type:ty),*) => {
         $(impl const FieldDecode for $simple_type {
-        const MASK: u32 = 1u32.wrapping_shl(<$simple_type>::BITS).wrapping_sub(1);
+            const MASK: u32 = 1u32.wrapping_shl(<$simple_type>::BITS).wrapping_sub(1);
             fn decode(val: u32) -> Option<Self> {
                 Self::try_from(val).ok()
             }
         })*
     };
 }
+
 impl_decode!(u8, u16, u32, i8, i16, i32);
 impl const FieldDecode for bool {
     const MASK: u32 = 0x1;
@@ -21,6 +21,7 @@ impl const FieldDecode for bool {
         Some(val != 0)
     }
 }
+
 macro_rules! field_enum {
     (
         $(#[$attr:meta])*
@@ -312,79 +313,23 @@ macro_rules! sdma_packets {
     (@op_match $op:literal) => {($op, _)};
 }
 
-#[allow(non_camel_case_types)]
-pub enum Op {
-    Noop,
+/// GCN 3: Topaz
+pub mod v2_4 {}
 
-    INDIRECT,   // = 4,
-    FENCE,      // = 5,
-    TRAP,       // = 6,
-    SEM,        // = 7,
-    COND_EXE,   // = 9,
-    ATOMIC,     // = 10,
-    CONST_FILL, // = 11,
-    TIMESTAMP,  // = 13,
-    SRBM_WRITE, // = 14,
-    PRE_EXE,    // = 15,
-    GPUVM_INV,  // = 16,
-    GCR_REQ,    // = 17,
-    DUMMY_TRAP, // = 32,
+/// GCN 3, 4: Tonga, Corrizo, Fiji, Stoney, Polaris 10, Polaris 12, Vegam
+pub mod v3_0 {}
 
-    // COPY = 1
-    COPY_LINEAR,                //  0
-    COPY_LINEAR_SUB_WIND,       //  4
-    COPY_LINEAR_PHY,            //  8
-    COPY_LINEAR_BC,             //  16
-    COPY_LINEAR_SUB_WIND_BC,    //  20
-    COPY_LINEAR_SUB_WIND_LARGE, //  36
-    COPY_TILED,                 //  1
-    COPY_TILED_SUB_WIND,        //  5
-    COPY_TILED_BC,              //  17
-    COPY_TILED_SUB_WIND_BC,     //  21
-    COPY_T2T_SUB_WIND,          //  6
-    COPY_T2T_SUB_WIND_BC,       //  22
-    COPY_SOA,                   //  3
-    COPY_DIRTY_PAGE,            //  7
+/// GCN 5 (v4.0 - v4.4.0): Vega 10, Raven, Vega 12, Raven 2, Picasso, Renoir, Vega 20, Arcturus, Aldebaran
+pub mod v4_0 {}
 
-    // WRITE = 2
-    WRITE_LINEAR,   //  0
-    WRITE_TILED,    //  1
-    WRITE_TILED_BC, //  17
+/// GCN 5 (v4.4.2, v4.4.3, v4.4.4)
+pub mod v4_4 {}
 
-    // PTEPDE = 12
-    PTEPDE_GEN,            //  0
-    PTEPDE_COPY,           //  1
-    PTEPDE_RMW,            //  2
-    PTEPDE_COPY_BACKWARDS, //  3
+/// Rdna 1: Navi 14, Navi 12, Navi 10, Cyan Skillfish, Cyan Skillfish 2
+pub mod v5_0 {}
 
-    // TIMESTAMP = 13
-    TIMESTAMP_SET,        //  0
-    TIMESTAMP_GET,        //  1
-    TIMESTAMP_GET_GLOBAL, //  2
-
-    MEM_INCR, //  1
-
-    DATA_FILL_MULTI, //  1
-
-    POLL_REGMEM,         // = 8,
-    POLL_REG_WRITE_MEM,  //  1
-    POLL_DBIT_WRITE_MEM, //  2
-    POLL_MEM_VERIFY,     //  3
-
-    VM_INVALIDATION, //  4
-}
-
-/// Also known as Iceland (GCN 3)
-pub mod v2 {}
-/// Also known as Tonga (GCN3, GCN 4)
-pub mod v3 {}
-/// Also known as Vega (GCN 5)
-pub mod v4 {}
-/// Also known as Navi (Rdna 1)
-///
-/// See `kernel/drivers/gpu/drm/amd/amdgpu/navi10_sdma_pkt_open.h`
-/// and `kernel/drivers/gpu/drm/amd/include/navi10_enum.h`
-pub mod v5 {
+/// Rdna 2: Sienna Child, Van Gogh, Navy Flounder, Dimgrey Cavefish, Yellow Carp, Beige Goby
+pub mod v5_2 {
 
     field_enum![
         Mtype: 0x7 {
@@ -431,5 +376,8 @@ pub mod v5 {
         VariantB: op = 2 {}
     });
 }
-/// (Rdna 3)
-pub mod v6 {}
+/// Rdna 3, 3.5
+pub mod v6_0 {}
+
+/// Rdna 4
+pub mod v7_0 {}
