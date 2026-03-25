@@ -508,15 +508,22 @@ macro_rules! sdma_packets {
 }
 
 /// GCN 3: Topaz
+///
+/// See `kernel/drivers/gpu/drm/amd/amdgpu/iceland_sdma_pkt_open.h`
+/// It defines ATOMIC op, but has no packet body definition
 pub mod v2_4 {
     sdma_packets!(Pkt<'pkt> {
 
+        // Confirmed
         @match_extra mod_name:copy_linear op =1, subop = 0, dw[0] >> 27 & 0x1 => {
+            // Confirmed
             0 => CopyLinear {
                 @bits
                 dw[0] = {
                     & 0x1 << 25 = backwards: bool;
-                    & 0x1 << 27 = broadcast: bool;
+                }
+                dw[1] = {
+                    & 0x003FFFFF << 0 = count: u32;
                 }
                 dw[2] = {
                     & 0x3 << 16 = dst_sw: u8;
@@ -524,104 +531,158 @@ pub mod v2_4 {
                     & 0x3 << 24 = src_sw: u8;
                     & 0x1 << 30 = src_ha: bool;
                 }
-                @full
-                dw[1] = copy_count: u32;
                 @join
                 dw[3], dw[4] = src_addr: u64;
                 dw[5], dw[6] = dst_addr: u64;
             }
+            // Confirmed
             1 => CopyLinearBroadcast {
                 @bits
-                dw[0] = {
-                    & 0x1 << 16 = encrypt: bool;
-                    & 0x1 << 18 = tmz: bool;
-                    & 0x1 << 27 = broadcast: bool;
+                dw[1] = {
+                    & 0x003FFFFF << 0 = count: u32;
                 }
                 dw[2] = {
                     & 0x3 << 8  = dst2_sw: u8;
-                    & 0x3 << 16 = dst_sw: u8;
+                    & 0x1 << 14  = dst2_ha: u8;
+                    & 0x3 << 16 = dst1_sw: u8;
+                    & 0x1 << 22  = dst1_ha: u8;
                     & 0x3 << 24 = src_sw: u8;
+                    & 0x1 << 30 = src_ha: u8;
                 }
-                @full
-                dw[1] = copy_count: u32;
                 @join
                 dw[3], dw[4] = src_addr: u64;
-                dw[5], dw[6] = dst_addr: u64;
+                dw[5], dw[6] = dst1_addr: u64;
                 dw[7], dw[8] = dst2_addr: u64;
             }
         }
 
+        // discriminant not confirmed
+        // 27 -> broadcast
+        // 26 -> videocopy (frame_to_field in umr)
+        //
+        // Since it uses the same mem layout in umr irrespective of videocopy I'm
+        // going to treat it as it only broadcast is a discriminant
+        @match_extra mod_name:copy_tiled op = 1, subop = 1, dw[0] >> 27 & 0x1 => {
+            // Layout confirmed
+            0 => CopyTiled {
+                @bits
+                dw[0] = {
+                    /// Pehaps the direction
+                    /// - false: Linear -> Tiled
+                    /// - true: Tiled -> Linear
+                    & 0x1 << 31 = detile: bool;
+                }
+                dw[3] = {
+                    & 0x7ff << 0  = pitch_in_tile: u16;
+                    & 0x3fff << 16 = height: u16;
+                }
+                dw[4] = {
+                    & 0x003fffff << 0 = slice_pitch: u32;
+                }
+                dw[5] = {
+                    & 0x7  << 0  = element_size: u8;
+                    & 0xf  << 3  = array_mode: u8;
+                    & 0x7  << 8  = mit_mode: u8;
+                    & 0x7  << 11 = tilesplit_size: u8;
+                    & 0x3  << 15 = bank_w: u8;
+                    & 0x3  << 18 = bank_h: u8;
+                    & 0x3  << 21 = num_bank: u8;
+                    & 0x3  << 24 = mat_aspt: u8;
+                    & 0x1f << 26 = pipe_config: u8;
+                }
+                dw[6] = {
+                    & 0x3fff << 0  = x: u16;
+                    & 0x3fff << 16 = y: u16;
+                }
+                dw[7] = {
+                    & 0xfff << 0 = z: u16;
+                    & 0x3 << 16 = linear_sw: u8;
+                    & 0x3 << 24 = tile_sw: u8;
+                }
+                dw[10] = {
+                    & 0x0007ffff << 0 = linear_pitch: u32;
+                }
+                dw[11] = {
+                    & 0x000fffff << 0 = count: u32;
+                }
+                @join
+                dw[1], dw[2] = tiled_addr: u64;
+                dw[8], dw[9] = linear_addr: u64;
+            }
+            // Layout Confirmed
+            1 => CopyLinearToTiledBroadcast {
+                @bits
+                dw[0] = {
+                    // Frame to field in umr
+                    & 0x1 << 26 = videocopy: bool;
+                }
+                dw[5] = {
+                    & 0x7ff << 0 = pitch_in_tile: u16;
+                    & 0x3fff << 16 = height: u16;
+                }
+                dw[6] = {
+                    & 0x003fffff << 0 = slice_pitch: u32;
+                }
+                dw[7] = {
+                    & 0x7  << 0  = element_size: u8;
+                    & 0xf  << 3  = array_mode: u8;
+                    & 0x7  << 8  = mit_mode: u8;
+                    & 0x7  << 11 = tilesplit_size: u8;
+                    & 0x3  << 15 = bank_w: u8;
+                    & 0x3  << 18 = bank_h: u8;
+                    & 0x3  << 21 = num_bank: u8;
+                    & 0x3  << 24 = mat_aspt: u8;
+                    & 0x1f << 26 = pipe_config: u8;
+                }
+                dw[8] = {
+                    & 0x3fff << 0  = x: u16;
+                    & 0x3fff << 16 = y: u16;
+                }
+                dw[9] = {
+                    & 0xfff << 0 = z: u16;
+                }
+                dw[10] = {
+                    & 0x3 << 8 = dst2_sw: u8;
+                    & 0x1 << 14 = dst2_ha: bool;
+                    & 0x3 << 16 = linear_sw: u8;
+                    & 0x3 << 24 = tile_sw: u8;
+                }
+                dw[13] = {
+                    & 0x0007ffff << 0 = linear_pitch: u32;
+                }
+                dw[14] = {
+                    & 0x000fffff << 0 = count: u32;
+                }
+                @join
+                dw[1], dw[2] = tiled_addr0: u64;
+                dw[3], dw[4] = tiled_addr1: u64;
+                dw[11], dw[12] = linear_addr: u64;
+            }
+        }
+
+        // Confirmed
         /// NOP (variable length)
         op = 0 => Nop<'pkt> {
             @dyn
             dw[1..] = data: &'pkt [u32],
-            dw[0] & 0xffff << 16 = len
+            dw[0] & 0x3fff << 16 = len
         }
 
-        // ── op 1: COPY ───────────────────────────────────────────────────────
-
-
-        /// COPY TILED (non-broadcast, non-l2t)
-        op = 1, subop = 1 => CopyTiled {
-            @bits
-            dw[0] = {
-                & 0x1 << 16 = encrypt: bool;
-                & 0x1 << 18 = tmz: bool;
-                & 0x1 << 26 = videocopy: bool;
-                & 0x1 << 27 = broadcast: bool;
-                & 0x1 << 31 = detile: bool;
-            }
-            dw[3] = {
-                & 0x7ff << 0  = pitch_in_tile: u16;
-                & 0x3fff << 16 = height: u16;
-            }
-            dw[4] = {
-                & 0x3fffff << 0 = slice_pitch: u32;
-            }
-            dw[5] = {
-                & 0x7  << 0  = element_size: u8;
-                & 0xf  << 3  = array_mode: u8;
-                & 0x7  << 8  = mit_mode: u8;
-                & 0x7  << 11 = tilesplit_size: u8;
-                & 0x3  << 15 = bank_w: u8;
-                & 0x3  << 18 = bank_h: u8;
-                & 0x3  << 21 = num_bank: u8;
-                & 0x3  << 24 = mat_aspt: u8;
-                & 0x1f << 26 = pipe_config: u8;
-            }
-            dw[6] = {
-                & 0x3fff << 0  = x: u16;
-                & 0x3fff << 16 = y: u16;
-            }
-            dw[7] = {
-                & 0x1fff << 0 = z: u16;
-            }
-            dw[8] = {
-                & 0x3 << 16 = linear_sw: u8;
-                & 0x3 << 24 = tile_sw: u8;
-            }
-            dw[11] = {
-                & 0x7ffff << 0 = linear_pitch: u32;
-            }
-            dw[12] = {
-                & 0xfffff << 0 = count: u32;
-            }
-            @join
-            dw[1], dw[2] = tiled_addr: u64;
-            dw[9], dw[10] = linear_addr: u64;
-        }
-
+        // Confirmed
         /// COPY STRUCT (SOA)
         op = 1, subop = 3 => CopyStruct {
             @bits
             dw[0] = {
-                & 0x1 << 18 = tmz: bool;
+                /// Perhaps direction of operation
                 & 0x1 << 31 = detile: bool;
             }
             dw[5] = {
                 & 0x7ff << 0  = stride: u16;
-                & 0x3  << 16  = linear_sw: u8;
-                & 0x3  << 24  = struct_sw: u8;
+                // In umr these two are switched
+                & 0x3  << 16  = struct_sw: u8;
+                & 0x1  << 22  = struct_ha: bool;
+                & 0x3  << 24  = linear_sw: u8;
+                & 0x1  << 30  = linear_ha: bool;
             }
             @full
             dw[3] = start_index: u32;
@@ -631,10 +692,10 @@ pub mod v2_4 {
             dw[6], dw[7] = linear_addr: u64;
         }
 
+        // Confirmed
         op = 1, subop = 4 => CopyLinearSubWindow {
             @bits
             dw[0] = {
-                & 0x1 << 18 = tmz: bool;
                 & 0x7 << 29 = elementsize: u8;
             }
             dw[3] = {
@@ -642,39 +703,44 @@ pub mod v2_4 {
                 & 0x3fff << 16 = src_y: u16;
             }
             dw[4] = {
-                // z_mask is version-dependent; use 0x1fff (NV value) for representability
-                & 0x1fff << 0 = src_z: u16;
+                & 0x7ff  << 0  = src_z: u16;
+                & 0x3fff << 16 = src_pitch: u16;
+            }
+            dw[5] = {
+                & 0x0fffffff << 0 = src_slice_pitch: u32;
             }
             dw[8] = {
                 & 0x3fff << 0  = dst_x: u16;
                 & 0x3fff << 16 = dst_y: u16;
             }
             dw[9] = {
-                & 0x1fff << 0 = dst_z: u16;
+                & 0x7ff  << 0  = dst_z: u16;
+                & 0x3fff << 16 = dst_pitch: u16;
+            }
+            dw[10] = {
+                & 0x0fffffff << 0 = dst_slice_pitch: u32;
             }
             dw[11] = {
                 & 0x3fff << 0  = rect_x: u16;
                 & 0x3fff << 16 = rect_y: u16;
             }
             dw[12] = {
-                & 0x1fff << 0  = rect_z: u16;
+                & 0x7ff << 0  = rect_z: u16;
                 & 0x3   << 16  = dst_sw: u8;
                 & 0x1   << 22  = dst_ha: bool;
                 & 0x3   << 24  = src_sw: u8;
                 & 0x1   << 30  = src_ha: bool;
             }
-            @full
-            dw[5] = src_slice_pitch: u32;
-            dw[10] = dst_slice_pitch: u32;
             @join
             dw[1], dw[2] = src_addr: u64;
             dw[6], dw[7] = dst_addr: u64;
         }
 
+        // Confirmed
         op = 1, subop = 5 => CopyTiledSubWindow {
             @bits
             dw[0] = {
-                & 0x1 << 18 = tmz: bool;
+                /// Perhaps direction
                 & 0x1 << 31 = detile: bool;
             }
             dw[3] = {
@@ -682,8 +748,11 @@ pub mod v2_4 {
                 & 0x3fff << 16 = tiled_y: u16;
             }
             dw[4] = {
-                & 0x1fff << 0  = tiled_z: u16;
-                & 0x3fff << 16 = tiled_pitch: u16;
+                & 0x7ff  << 0  = tiled_z: u16;
+                & 0xfff << 16 = pitch_in_tile: u16;
+            }
+            dw[5] = {
+                & 0x0fffffff << 0 = slice_pitch: u32;
             }
             dw[6] = {
                 & 0x7  << 0  = element_size: u8;
@@ -701,37 +770,40 @@ pub mod v2_4 {
                 & 0x3fff << 16 = linear_y: u16;
             }
             dw[10] = {
-                & 0x1fff << 0  = linear_z: u16;
+                & 0x7ff  << 0  = linear_z: u16;
                 & 0x3fff << 16 = linear_pitch: u16;
+            }
+            dw[11] = {
+                & 0x0fffffff << 0 = linear_slice_pitch: u32;
             }
             dw[12] = {
                 & 0x3fff << 0  = rect_x: u16;
                 & 0x3fff << 16 = rect_y: u16;
             }
             dw[13] = {
-                & 0x1fff << 0  = rect_z: u16;
+                & 0x7ff << 0   = rect_z: u16;
                 & 0x3   << 16  = linear_sw: u8;
                 & 0x3   << 22  = tile_sw: u8;
             }
-            @full
-            dw[5] = pitch_in_tile: u32;
-            dw[11] = linear_slice_pitch: u32;
             @join
             dw[1], dw[2] = tiled_addr: u64;
             dw[7], dw[8] = linear_addr: u64;
         }
-        op = 1, subop = 6 => CopyT2tSubWindow {
+
+        // Confirmed
+        // Copy T2T SubWindow
+        op = 1, subop = 6 => CopyTiledToTiled {
             @bits
-            dw[0] = {
-                & 0x1 << 18 = tmz: bool;
-            }
             dw[3] = {
                 & 0x3fff << 0  = src_x: u16;
                 & 0x3fff << 16 = src_y: u16;
             }
             dw[4] = {
-                & 0x1fff << 0  = src_z: u16;
-                & 0x3fff << 16 = src_pitch: u16;
+                & 0x7ff << 0 = src_z: u16;
+                & 0xfff << 16 = src_pitch_in_tile: u16;
+            }
+            dw[5] = {
+                & 0x003fffff << 0 = src_slice_pitch: u32;
             }
             dw[6] = {
                 & 0x7  << 0  = src_element_size: u8;
@@ -740,7 +812,7 @@ pub mod v2_4 {
                 & 0x7  << 11 = src_tilesplit_size: u8;
                 & 0x3  << 15 = src_bank_w: u8;
                 & 0x3  << 18 = src_bank_h: u8;
-                & 0x3  << 21 = src_num_banks: u8;
+                & 0x3  << 21 = src_num_bank: u8;
                 & 0x3  << 24 = src_mat_aspt: u8;
                 & 0x1f << 26 = src_pipe_config: u8;
             }
@@ -749,8 +821,11 @@ pub mod v2_4 {
                 & 0x3fff << 16 = dst_y: u16;
             }
             dw[10] = {
-                & 0x1fff << 0  = dst_z: u16;
-                & 0x3fff << 16 = dst_pitch: u16;
+                & 0x7ff << 0 = dst_z: u16;
+                & 0xfff << 16 = dst_pitch_in_tile: u16;
+            }
+            dw[11] = {
+                & 0x003fffff << 0 = dst_slice_pitch: u32;
             }
             dw[12] = {
                 & 0x7  << 0  = dst_element_size: u8;
@@ -759,51 +834,25 @@ pub mod v2_4 {
                 & 0x7  << 11 = dst_tilesplit_size: u8;
                 & 0x3  << 15 = dst_bank_w: u8;
                 & 0x3  << 18 = dst_bank_h: u8;
-                & 0x3  << 21 = dst_num_banks: u8;
+                & 0x3  << 21 = dst_num_bank: u8;
                 & 0x3  << 24 = dst_mat_aspt: u8;
                 & 0x1f << 26 = dst_pipe_config: u8;
             }
             dw[13] = {
-                & 0x3fff << 0  = rect_x: u16;
+                & 0x3fff << 0 = rect_x: u16;
                 & 0x3fff << 16 = rect_y: u16;
             }
             dw[14] = {
-                & 0x1fff << 0  = rect_z: u16;
-                & 0x3   << 16  = dst_sw: u8;
-                & 0x3   << 22  = src_sw: u8;
+                & 0x7ff << 0 = rect_z: u16;
+                & 0x3 << 16 = dst_sw: u8;
+                & 0x3 << 24 = src_sw: u8;
             }
-            @full
-            dw[5] = src_slice_pitch: u32;
-            dw[11] = dst_slice_pitch: u32;
             @join
             dw[1], dw[2] = src_addr: u64;
             dw[7], dw[8] = dst_addr: u64;
         }
-        op = 1, subop = 7 => CopyDirtyPage {
-            @bits
-            dw[0] = {
-                & 0x1 << 18 = tmz: bool;
-                & 0x1 << 31 = all: bool;
-            }
-            dw[1] = {
-                & 0x3fffff << 0 = count: u32;
-            }
-            dw[2] = {
-                & 0x3 << 16 = dst_sw: u8;
-                & 0x1 << 19 = dst_gcc: bool;
-                & 0x1 << 20 = dst_sys: bool;
-                & 0x1 << 22 = dst_snoop: bool;
-                & 0x1 << 23 = dst_gpa: bool;
-                & 0x3 << 24 = src_sw: u8;
-                & 0x1 << 28 = src_sys: bool;
-                & 0x1 << 30 = src_snoop: bool;
-                & 0x1 << 31 = src_gpa: bool;
-            }
-            @join
-            dw[3], dw[4] = src_addr: u64;
-            dw[5], dw[6] = dst_addr: u64;
-        }
-        // ── op 2: WRITE ──────────────────────────────────────────────────────
+
+        // Confirmed
         /// WRITE LINEAR (with variable data payload)
         op = 2, subop = 0 => WriteLinear<'pkt> {
             @bits
@@ -812,15 +861,16 @@ pub mod v2_4 {
                 & 0x1 << 18 = tmz: bool;
             }
             dw[3] = {
-                & 0x3      << 24 = swap: u8;
+                & 0x3 << 24 = sw: u8;
             }
             @join
             dw[1], dw[2] = dst_addr: u64;
             @dyn
             dw[4..] = data: &'pkt [u32],
-            dw[3] & 0xffffff << 0 = len
+            dw[3] & 0x003fffff << 0 = len
         }
 
+        // Confirmed
         /// WRITE TILED (with variable data payload)
         op = 2, subop = 1 => WriteTiled<'pkt> {
             @bits
@@ -829,7 +879,7 @@ pub mod v2_4 {
                 & 0x3fff << 16 = height: u16;
             }
             dw[4] = {
-                & 0x3fffff << 0 = slice_pitch: u32;
+                & 0x003fffff << 0 = slice_pitch: u32;
             }
             dw[5] = {
                 & 0x7  << 0  = element_size: u8;
@@ -847,40 +897,49 @@ pub mod v2_4 {
                 & 0x3fff << 16 = y: u16;
             }
             dw[7] = {
-                & 0x7ff  << 0  = z: u16;
+                & 0xfff  << 0  = z: u16;
                 & 0x3    << 24 = sw: u8;
             }
             @join
             dw[1], dw[2] = dst_addr: u64;
             @dyn
             dw[9..] = data: &'pkt [u32],
-            dw[8] & 0xfffff << 0 = len
+            dw[8] & 0x003fffff << 0 = len
         }
+
+        // Confirmed
         op = 4 => IndirectBuffer {
             @bits
             dw[0] = {
                 & 0xf << 16 = vmid: u8;
-                & 0x1 << 31 = priv_flag: bool;
             }
-            @full
-            dw[3] = ib_size: u32;
+            dw[3] = {
+                & 0x000fffff << 0 = ib_size: u32;
+            }
             @join
             dw[1], dw[2] = ib_base: u64;
-            dw[4], dw[5] = ib_csa_addr: u64;
+            // In umr ib_csa_addr
+            dw[4], dw[5] = csa_addr: u64;
         }
+
+        // Confirmed
         op = 5 => Fence {
             @full
-            dw[3] = fence_data: u32;
+            dw[3] = data: u32;
             @join
-            dw[1], dw[2] = fence_addr: u64;
+            dw[1], dw[2] = addr: u64;
         }
+
+        // Confirmed
         op = 6 => Trap {
             @bits
             dw[1] = {
-                & 0xffffff << 0 = trap_int_context: u32;
+                & 0x0fffffff << 0 = int_context: u32;
             }
         }
-        op=7, subop=0 => Sem {
+
+        // Confirmed
+        op=7, subop=0 => Semaphore {
             @bits
             dw[0] = {
                 & 0x1 << 29 = write_one: bool;
@@ -888,13 +947,10 @@ pub mod v2_4 {
                 & 0x1 << 31 = mailbox: bool;
             }
             @join
-            dw[1], dw[2] = semaphore_addr: u64;
-        }
-
-        op = 7, subop = 1 => SemMemIncr {
-            @join
             dw[1], dw[2] = addr: u64;
         }
+
+        // Confirmed
         op = 8, subop = 0 => PollRegmem {
             @bits
             dw[0] = {
@@ -913,98 +969,41 @@ pub mod v2_4 {
             dw[1], dw[2] = addr_or_reg: u64;
         }
 
-        op = 8, subop = 1 => PollRegWriteMem {
-            @full
-            dw[1] = src_addr: u32;
-            @join
-            dw[2], dw[3] = dst_addr: u64;
-        }
-
-        op = 8, subop = 2 => PollDbitWriteMem {
-            @bits
-            dw[0] = {
-                & 0x3 << 16 = ea: u8;
-            }
-            dw[3] = {
-                & 0xfffffff << 4 = start_page: u32;
-            }
-            @full
-            dw[4] = page_num: u32;
-            @join
-            dw[1], dw[2] = dst_addr: u64;
-        }
-
-        op = 8, subop = 3 => MemVerify {
-            @bits
-            dw[0] = {
-                & 0x1 << 31 = mode: bool;
-            }
-            @full
-            dw[1] = pattern: u32;
-            dw[12] = reserved: u32;
-            @join
-            dw[2], dw[3] = cmp0_addr_start: u64;
-            dw[4], dw[5] = cmp0_addr_end: u64;
-            dw[6], dw[7] = cmp1_addr_start: u64;
-            dw[8], dw[9] = cmp1_addr_end: u64;
-            dw[10], dw[11] = rec_addr: u64;
-        }
-
+        // Confirmed
         op = 9 => CondExe {
+            @bits
+            dw[4] = {
+                & 0x3fff << 0 = exec_count: u16;
+            }
             @full
             dw[3] = reference: u32;
-            dw[4] = exec_count: u32;
             @join
             dw[1], dw[2] = addr: u64;
         }
-        op = 10 => Atomic {
-            @bits
-            dw[0] = {
-                & 0x1  << 16 = loop_flag: bool;
-                & 0x7f << 25 = op_code: u8;
-            }
-            dw[7] = {
-                & 0x1fff << 0 = loop_interval: u16;
-            }
-            @full
-            dw[3] = src_data_lo: u32;
-            dw[4] = src_data_hi: u32;
-            dw[5] = cmp_data_lo: u32;
-            dw[6] = cmp_data_hi: u32;
-            @join
-            dw[1], dw[2] = addr: u64;
-        }
+
+        // Confirmed
         op = 11, subop = 0 => ConstFill {
             @bits
             dw[0] = {
-                & 0x3 << 16 = swap: u8;
+                // swap
+                & 0x3 << 16 = sw: u8;
                 & 0x3 << 30 = fill_size: u8;
+            }
+            dw[4] = {
+                & 0x003fffff << 0 = byte_count: u32;
             }
             @full
             dw[3] = data: u32;
-            dw[4] = byte_count: u32;
             @join
             dw[1], dw[2] = dst_addr: u64;
         }
 
-        op = 11, subop = 1 => DataFillMulti {
-            @bits
-            dw[0] = {
-                & 0x1 << 31 = memlog_clr: bool;
-            }
-            dw[5] = {
-                & 0x3ffffff << 0 = count: u32;
-            }
-            @full
-            dw[1] = byte_stride: u32;
-            dw[2] = dma_count: u32;
-            @join
-            dw[3], dw[4] = dst_addr: u64;
-        }
+        // Confirmed
+        /// SDMA_PKT_WRITE_INCR
         op = 12, subop = 0 => GenPtepde {
             @bits
             dw[9] = {
-                & 0x7ffff << 0 = count: u32;
+                & 0x0007ffff << 0 = count: u32;
             }
             @join
             dw[1], dw[2] = dst_addr: u64;
@@ -1013,62 +1012,40 @@ pub mod v2_4 {
             dw[7], dw[8] = incr: u64;
         }
 
-        op = 12, subop = 1 => GenPtepdeCopy {
-            @bits
-            dw[0] = {
-                & 0x1 << 31 = ptepde_op: bool;
-            }
-            dw[7] = {
-                & 0x7ffff << 0 = count: u32;
-            }
-            @join
-            dw[1], dw[2] = src_addr: u64;
-            dw[3], dw[4] = dst_addr: u64;
-            dw[5], dw[6] = mask: u64;
-        }
-
-        op = 12, subop = 2 => GenPtepdeRmw {
-            @bits
-            dw[0] = {
-                & 0x7 << 16 = mtype: u8;
-                & 0x1 << 19 = gcc: bool;
-                & 0x1 << 20 = sys: bool;
-                & 0x1 << 22 = snp: bool;
-                & 0x1 << 23 = gpa: bool;
-            }
-            @full
-            dw[7] = num_of_pte: u32;
-            @join
-            dw[1], dw[2] = addr: u64;
-            dw[3], dw[4] = mask: u64;
-            dw[5], dw[6] = value: u64;
-        }
+        // Confirmed
         op = 13, subop = 0 => TimestampSet {
             @join
             dw[1], dw[2] = init_data: u64;
         }
 
+        // Confirmed
         op = 13, subop = 1 => TimestampGet {
             @join
             dw[1], dw[2] = write_addr: u64;
         }
 
+        // Confirmed
         op = 13, subop = 2 => TimestampGetGlobal {
             @join
             dw[1], dw[2] = write_addr: u64;
         }
+
+        // Confirmed
+        /// Register write
         op = 14, subop = 0 => SrbmWrite {
             @bits
             dw[0] = {
                 & 0xf << 28 = byte_enable: u8;
             }
             dw[1] = {
+                /// Register
                 & 0xffff << 0 = addr: u16;
             }
             @full
             dw[2] = data: u32;
         }
 
+        // Confirmed
         op = 15 => PreExe {
             @bits
             dw[0] = {
@@ -1078,81 +1055,42 @@ pub mod v2_4 {
                 & 0x3fff << 0 = exec_count: u16;
             }
         }
-
-        op = 16 => GpuvmInv {
-            @bits
-            dw[1] = {
-                & 0xffff << 0  = per_vmid_inv_req: u16;
-                & 0x7    << 16 = flush_type: u8;
-                & 0x1    << 19 = inv_l2_ptes: bool;
-                & 0x1    << 20 = inv_l2_pde0: bool;
-                & 0x1    << 21 = inv_l2_pde1: bool;
-                & 0x1    << 22 = inv_l2_pde2: bool;
-                & 0x1    << 23 = inv_l1_ptes: bool;
-                & 0x1    << 24 = clear_protection_fault_status_addr: bool;
-                & 0x1    << 25 = log_request: bool;
-                & 0x1    << 26 = four_kb: bool;
-            }
-            dw[2] = {
-                & 0x1  << 0 = s_bit: bool;
-            }
-            dw[3] = {
-                & 0x3f << 0 = page_vm_addr_hi: u8;
-            }
-        }
-
-        op = 17 => Gcr {
-            @bits
-            dw[3] = {
-                & 0x3 << 0 = seq: u8;
-                & 0x1 << 2 = range_is_pa: bool;
-            }
-            @join
-            dw[1], dw[2] = base_va: u64;
-            dw[3], dw[4] = limit_va: u64;
-        }
-
-        op = 32 => DummyTrap {
-            @bits
-            dw[1] = {
-                & 0xfffffff << 0 = int_context: u32;
-            }
-        }
     });
 }
 
 /// GCN 3, 4: Tonga, Corrizo, Fiji, Stoney, Polaris 10, Polaris 12, Vegam
-pub mod v3_0 {
-    // Packet layout is identical to v2_4.
-    pub use super::v2_4::*;
-}
+///
+/// ## Changes
+/// - added ATOMIC
+pub mod v3_0 {}
 
 /// GCN 5 (v4.0 - v4.4.0): Vega 10, Raven, Vega 12, Raven 2, Picasso, Renoir, Vega 20, Arcturus, Aldebaran
 ///
 /// ## Changes
-/// - COPY LINEAR: adds ENCRYPT, TMZ; drops DST_HA/SRC_HA in favour of
-///    DST_SW/SRC_SW (kept), optional DST_CACHE_POLICY/SRC_CACHE_POLICY
-/// - COPY TILED: replaces ARRAY_MODE+MIT_MODE+… with SWIZZLE_MODE/DIMENSION/
-///    EPITCH; adds MIP_MAX; changes Z mask to 0x1FFF and linear pitch to
-///    0x7FFFF; count 0x3FFFFFFF; adds L2_POLICY / LLC_POLICY cache fields
-/// - COPY TILED_SUB_WINDOW: SWIZZLE_MODE/DIMENSION/EPITCH; MIP_MAX/MIP_ID
-/// - WRITE LINEAR/TILED: TMZ/ENCRYPT; SWIZZLE_MODE instead of tiling params
-/// - FENCE: now a sub-opcode 0 packet with MTYPE/GCC/SYS/SNP/GPA fields
-/// - FENCE COND INTR: subop 1
-/// - SEM MEM_INCR: L2_POLICY/LLC_POLICY
-/// - SRBM_WRITE: addr 0x3FFFF-wide
 pub mod v4_0 {}
 
 /// GCN 5 (v4.4.2, v4.4.3, v4.4.4)
+///
+/// ## Changes
+/// - COPY_LINEAR: dst and src cache policy
+/// - COPY_LINEAR_BROADCAST: dst, dst2, src cache policy
 pub mod v4_4 {}
 
 /// Rdna 1: Navi 14, Navi 12, Navi 10, Cyan Skillfish, Cyan Skillfish 2
+///
+/// ## Changes
 pub mod v5_0 {}
 
 /// Rdna 2: Sienna Child, Van Gogh, Navy Flounder, Dimgrey Cavefish, Yellow Carp, Beige Goby
+///
+/// ## Changes
 pub mod v5_2 {}
 /// Rdna 3, 3.5
+///
+/// ## Changes
 pub mod v6_0 {}
 
 /// Rdna 4
+///
+/// ## Changes
 pub mod v7_0 {}
