@@ -914,8 +914,6 @@ pub mod v2_4 {
     });
 
     unify!(Pkt<'pkt> {
-
-        // Confirmed
         @match_extra op =1, subop = 0, dw[0] >> 27 & 0x1 => {
             0 => CopyLinear
             1 => CopyLinearBroadcast
@@ -926,71 +924,30 @@ pub mod v2_4 {
         // 26 -> videocopy (frame_to_field in umr)
         //
         // Since it uses the same mem layout in umr irrespective of videocopy I'm
-        // going to treat it as it only broadcast is a discriminant
+        // going to treat it as if only broadcast is a discriminant
         @match_extra op = 1, subop = 1, dw[0] >> 27 & 0x1 => {
             0 => CopyTiled
-            // Layout Confirmed
             1 => CopyLinearToTiledBroadcast
         }
-
-        // Confirmed
         op = 0 => Nop<'pkt>
-
-        // Confirmed
         op = 1, subop = 3 => CopyStruct
-
-        // Confirmed
         op = 1, subop = 4 => CopyLinearSubWindow
-
-        // Confirmed
         op = 1, subop = 5 => CopyTiledSubWindow
-
-        // Confirmed
         op = 1, subop = 6 => CopyTiledToTiled
-
-        // Confirmed
         op = 2, subop = 0 => WriteLinear<'pkt>
-
-        // Confirmed
         op = 2, subop = 1 => WriteTiled<'pkt>
-
-        // Confirmed
         op = 4 => IndirectBuffer
-
-        // Confirmed
         op = 5 => Fence
-
-        // Confirmed
         op = 6 => Trap
-
-        // Confirmed
         op = 7, subop = 0 => Semaphore
-
-        // Confirmed
         op = 8, subop = 0 => PollRegmem
-
-        // Confirmed
         op = 9 => CondExe
-
-        // Confirmed
         op = 11, subop = 0 => ConstFill
-
-        // Confirmed
         op = 12, subop = 0 => GenPtepde
-
-        // Confirmed
         op = 13, subop = 0 => TimestampSet
-
-        // Confirmed
         op = 13, subop = 1 => TimestampGet
-
-        // Confirmed
         op = 13, subop = 2 => TimestampGetGlobal
-
-        // Confirmed
         op = 14, subop = 0 => SrbmWrite
-
-        // Confirmed
         op = 15 => PreExe
     });
 }
