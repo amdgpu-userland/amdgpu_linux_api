@@ -1,10 +1,14 @@
-#![allow(incomplete_features)]
 #![feature(const_trait_impl)]
 #![feature(const_convert)]
 #![feature(const_result_trait_fn)]
-#![feature(const_try)]
 #![feature(const_index)]
-#![feature(guard_patterns)]
+// This is too broken to be used yet
+//#![feature(guard_patterns)]
+// // For expanded macro debugging
+// #![feature(panic_internals)]
+// #![feature(fmt_helpers_for_derive)]
+// #![feature(derive_clone_copy)]
+// #![feature(trivial_clone)]
 
 #[macro_use]
 mod ioctl_helpers;
