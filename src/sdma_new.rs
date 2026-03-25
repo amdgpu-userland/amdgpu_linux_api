@@ -75,6 +75,8 @@ macro_rules! field_enum {
 /// Packets are defined with a header which distinguishes the packet by op, subop and extra bits in
 /// first dword.
 ///
+/// If subop is not given it defaults to 0.
+///
 /// Some fields of a packet don't fit a dword - addresses for example.
 /// You can use `join` section to declare these.
 ///
@@ -504,7 +506,7 @@ macro_rules! sdma_packets {
         } $($rest)*)
     };
     (@op_match $op:literal $subop:literal) => {($op, $subop)};
-    (@op_match $op:literal) => {($op, _)};
+    (@op_match $op:literal) => {($op, 0)};
 }
 
 /// GCN 3: Topaz
