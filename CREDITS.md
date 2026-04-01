@@ -1,3 +1,5 @@
+## Linux amdgpu and drm source code and header files (GPL-2.0)
+
 ## UMR's src/lib/packet/sdma/sdma_decode_opcodes.c (MIT)
 Copyright (c) 2025 Advanced Micro Devices, Inc.
 
