@@ -2,6 +2,10 @@
 name = "amdgpu_linux_api"
 version = "0.1.0"
 edition = "2024"
+description = "Safe abstractions for AMDGPU Linux kernel interfaces"
+repository = "https://github.com/amdgpu-userland/amdgpu_linux_api"
+license = "GPL-2.0-only"
+publish = false
 
 [dependencies]
 libc = "0.2.182"

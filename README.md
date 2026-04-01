@@ -1,23 +1,35 @@
-## Linux's C header files
-You can find them in kernel-headers package on fedora.
+# AMDGPU Linux API
 
-In kernel source code these are the paths:
-### KFD
-`include/uapi/linux/kfd_sysfs.h`
-`include/uapi/linux/kfd_ioctl.h`
+**Status: Work in Progress / Experimental**
 
-### DRM
-`include/uapi/drm/amdgpu_drm.h`
+This repository provides Rust bindings to AMDGPU Linux kernel interfaces.
 
-## Why not to simply use bindgen?
-Bindgen fails to generate important constants and produces bloat by default because how unhygenic
-include file dependencies are.
+The goal is to benefit from Rust when interacting with AMD GPUs on Linux,
+bypassing the need for C libraries (libdrm-amdgpu, ROCm).
 
-## Why not to use existing C libraries?
-Because we can.
 
-### Some tests are design to be run alone and are interactive
-Example 
+## Running Experiments
+
+Experiments in the `examples/` directory can be run using Cargo.
+Some experiments are interactive or designed to be run in isolation.
+
 ```sh
-cargo test calling_acquire_vm_twice_the_same_file -- --no-capture
+# Example: Run a specific experiment
+cargo run --example kfd_list_devices
 ```
+
+## Contributing
+
+Contributions are welcome!
+
+At this stage a lot of things can still change.
+
+If you're interested,
+please feel free to open an issue or a pull request.
+
+Generally it's best to add new examples to verify rust bindings against kernel behavior.
+
+## License
+
+This project is licensed under the GNU General Public License v2.0 (GPL-2.0-only).
+
