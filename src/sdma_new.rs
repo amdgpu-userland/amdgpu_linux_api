@@ -2819,6 +2819,11 @@ pub mod v5_0 {
 ///     * added `linear_cache_policy`
 ///     * added `tile_cache_policy`
 ///     * increased `count` size
+/// - COPY_TILED_SUBWIN:
+///     * added `cpv`
+///     * added `linear_cache_policy`
+///     * added `tile_cache_policy`
+///     * added `meta_llc`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3120,6 +3125,77 @@ pub mod v5_2 {
         @join
         dw[1], dw[2] = tiled_addr: u64;
         dw[8], dw[9] = linear_addr: u64;
+    });
+
+    packet!(CopyTiledSubwin {
+        @bits
+        dw[0] = {
+            & 0x1 << 18 = tmz: bool;
+            & 0x1 << 19 = dcc: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+            & 0x1 << 31 = detile: bool;
+        }
+        dw[3] = {
+            & 0x3fff << 0 = tiled_x: u16;
+            & 0x3fff << 16 = tiled_y: u16;
+        }
+        dw[4] = {
+            & 0x1fff << 0 = tiled_z: u16;
+            & 0x3fff << 16 = width: u16;
+        }
+        dw[5] = {
+            & 0x3fff << 0 = height: u16;
+            & 0x1fff << 16 = depth: u16;
+        }
+        dw[6] = {
+            & 0x7 << 0 = element_size: u8;
+            & 0x1f << 3 = swizzle_mode: u8;
+            & 0x3 << 9 = dimension: u8;
+            & 0xf << 16 = mip_max: u8;
+            & 0xf << 20 = mip_id: u8;
+        }
+        dw[9] = {
+            & 0x3fff << 0 = linear_x: u16;
+            & 0x3fff << 16 = linear_y: u16;
+        }
+        dw[10] = {
+            & 0x1fff << 0 = linear_z: u16;
+            & 0x3fff << 16 = linear_pitch: u16;
+        }
+        dw[11] = {
+            & 0xfffffff << 0 = linear_slice_pitch: u32;
+        }
+        dw[12] = {
+            & 0x3fff << 0 = rect_x: u16;
+            & 0x3fff << 16 = rect_y: u16;
+        }
+        dw[13] = {
+            & 0x1fff << 0 = rect_z: u16;
+            & 0x3 << 16 = linear_sw: u8;
+            // added
+            & 0x7 << 18 = linear_cache_policy: u8;
+            & 0x3 << 24 = tile_sw: u8;
+            // added
+            & 0x7 << 26 = tile_cache_policy: u8;
+        }
+        dw[16] = {
+            & 0x7f << 0 = data_format: u8;
+            & 0x1 << 7 = color_transform_disable: bool;
+            & 0x1 << 8 = alpha_is_on_msb: bool;
+            & 0x7 << 9 = number_type: u8;
+            & 0x3 << 12 = surface_type: u8;
+            // added
+            & 0x1 << 14 = meta_llc: bool;
+            & 0x3 << 24 = max_comp_block_size: u8;
+            & 0x3 << 26 = max_uncomp_block_size: u8;
+            & 0x1 << 28 = write_compress_enable: bool;
+            & 0x1 << 29 = meta_tmz: bool;
+        }
+        @join
+        dw[1], dw[2] = tiled_addr: u64;
+        dw[7], dw[8] = linear_addr: u64;
+        dw[14], dw[15] = meta_addr: u64;
     });
 }
 /// Rdna 3, 3.5
