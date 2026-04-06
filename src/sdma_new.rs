@@ -2824,6 +2824,9 @@ pub mod v5_0 {
 ///     * added `linear_cache_policy`
 ///     * added `tile_cache_policy`
 ///     * added `meta_llc`
+/// - DATA_FILL_MULTI:
+///     * added `cpv`
+///     * added `cache_policy`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3196,6 +3199,25 @@ pub mod v5_2 {
         dw[1], dw[2] = tiled_addr: u64;
         dw[7], dw[8] = linear_addr: u64;
         dw[14], dw[15] = meta_addr: u64;
+    });
+
+    packet!(DataFillMulti {
+        @bits
+        dw[0] = {
+            // added
+            & 0x7 << 24 = cache_policy: u8;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+            & 0x1 << 31 = memlog_clr: bool;
+        }
+        dw[5] = {
+            & 0x3ffffff << 0 = count: u32;
+        }
+        @full
+        dw[1] = byte_stride: u32;
+        dw[2] = dma_count: u32;
+        @join
+        dw[3], dw[4] = dst_addr: u64;
     });
 }
 /// Rdna 3, 3.5
