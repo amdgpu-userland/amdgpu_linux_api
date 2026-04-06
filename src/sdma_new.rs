@@ -376,9 +376,10 @@ pub mod v2_4 {
     // Confirmed
     packet!(CopyLinear {
         @bits
-        dw[0] = {
-            & 0x1 << 25 = backwards: bool;
-        }
+        // dw[0] = {
+        //     // Not in iceland_sdma_pkt_open
+        //     & 0x1 << 25 = backwards: bool;
+        // }
         dw[1] = {
             & 0x003FFFFF << 0 = count: u32;
         }
@@ -1636,6 +1637,64 @@ pub mod v4_0 {
     pub use super::v3_0::TimestampGetGlobal;
     pub use super::v3_0::TimestampSet;
     pub use super::v3_0::Trap;
+
+    unify!(Pkt<'pkt> {
+        @match_extra op =1, subop = 0, dw[0] >> 27 & 0x1 => {
+            0 => CopyLinear
+            1 => CopyBroadcastLinear
+        }
+
+        // discriminant not confirmed
+        // 27 -> broadcast
+        // 26 -> videocopy (frame_to_field in umr)
+        //
+        // Since it uses the same mem layout in umr irrespective of videocopy I'm
+        // going to treat it as if only broadcast is a discriminant
+        @match_extra op = 1, subop = 1, dw[0] >> 27 & 0x1 => {
+            0 => CopyTiled
+            1 => CopyL2tBroadcast
+        }
+        op = 0 => Nop<'pkt>
+        op = 1, subop = 3 => CopyStruct
+        op = 1, subop = 4 => CopyLinearSubwin
+        op = 1, subop = 5 => CopyTiledSubwin
+        op = 1, subop = 6 => CopyT2t
+        op = 1, subop = 7 => CopyDirtyPage
+        op = 1, subop = 8 => CopyPhysicalLinear
+        //op = 1, subop = 16 => CopyLinearBc
+        //op = 1, subop = 17 => CopyTiledBc
+        //op = 1, subop = 20 => CopyLinearSubwindBc
+        //op = 1, subop = 21 => CopyTiledSubwindBc
+        //op = 1, subop = 22 => CopyT2tSubwindBc
+        //op = 1, subop = 36 => CopySubwinLarge
+        op = 2, subop = 0 => WriteUntiled<'pkt>
+        op = 2, subop = 1 => WriteTiled<'pkt>
+        //op = 2, subop = 17 => WriteTiledBc<'pkt>
+        op = 4 => IndirectBuffer
+        op = 5 => Fence
+        op = 6 => Trap
+        op = 7, subop = 0 => Semaphore
+        //op = 7, subop = 1 => MemIncr
+        op = 8, subop = 0 => PollRegmem
+        op = 8, subop = 1 => PollRegWriteMem
+        op = 8, subop = 2 => PollDbitWriteMem
+        op = 8, subop = 3 => PollMemVerify
+        //op = 8, subop = 4 => Invalidation
+        op = 9 => CondExe
+        op = 10 => Atomic
+        op = 11, subop = 0 => ConstFill
+        op = 11, subop = 1 => DataFillMulti<'pkt>
+        op = 12, subop = 0 => WriteIncr
+        op = 12, subop = 1 => PtepdeCopy
+        op = 12, subop = 2 => PtepdeRmw
+        // Not in UMR
+        op = 12, subop = 3 => PtepdeCopyBackwards
+        op = 13, subop = 0 => TimestampSet
+        op = 13, subop = 1 => TimestampGet
+        op = 13, subop = 2 => TimestampGetGlobal
+        op = 14, subop = 0 => SrbmWrite
+        op = 15 => PreExe
+    });
 }
 
 /// GCN 5 (v4.4.2, v4.4.3, v4.4.4)
@@ -1645,6 +1704,26 @@ pub mod v4_0 {
 /// - COPY_LINEAR_BROADCAST: dst, dst2, src cache policy
 pub mod v4_4 {
     pub use super::v4_0::*;
+    packet!(CopyLinear {
+        @bits
+        dw[0] = {
+            & 0x1 << 16 = encrypt: bool;
+            & 0x1 << 18 = tmz: bool;
+            & 0x1 << 27 = broadcast: bool;
+        }
+        dw[1] = {
+            & 0x3fffff << 0 = count: u32;
+        }
+        dw[2] = {
+            & 0x3 << 16 = dst_sw: u8;
+            & 0xf << 18 = dst_cache_policy: u8;
+            & 0x3 << 24 = src_sw: u8;
+            & 0xf << 26 = src_cache_policy: u8;
+        }
+        @join
+        dw[3], dw[4] = src_addr: u64;
+        dw[5], dw[6] = dst_addr: u64;
+    });
 }
 
 /// Rdna 1: Navi 14, Navi 12, Navi 10, Cyan Skillfish, Cyan Skillfish 2
