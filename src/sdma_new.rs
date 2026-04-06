@@ -2132,6 +2132,8 @@ pub mod v5_0 {
             & 0x3 << 26 = max_uncomp_block_size: u8;
             & 0x1 << 28 = write_compress_enable: bool;
             & 0x1 << 29 = meta_tmz: bool;
+            // in umr and pal
+            & 0x1 << 31 = pipe_aligned: bool;
         }
         @join
         dw[1], dw[2] = src_addr: u64;
@@ -2806,6 +2808,11 @@ pub mod v5_0 {
 ///     * added `cpv`
 ///     * added `linear_cache_policy`
 ///     * added `struct_cache_policy`
+/// - COPY_T2T:
+///     * added `cpv`
+///     * added `dst_cache_policy`
+///     * added `src_cache_policy`
+///     * added `meta_llc`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -2976,6 +2983,86 @@ pub mod v5_2 {
         @join
         dw[1], dw[2] = sb_addr: u64;
         dw[6], dw[7] = linear_addr: u64;
+    });
+
+    packet!(CopyT2t {
+        @bits
+        dw[0] = {
+            & 0x1 << 18 = tmz: bool;
+            & 0x1 << 19 = dcc: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+            & 0x1 << 31 = dcc_dir: bool;
+        }
+        dw[3] = {
+            & 0x3fff << 0 = src_x: u16;
+            & 0x3fff << 16 = src_y: u16;
+        }
+        dw[4] = {
+            & 0x1fff << 0 = src_z: u16;
+            & 0x3fff << 16 = src_width: u16;
+        }
+        dw[5] = {
+            & 0x3fff << 0 = src_height: u16;
+            & 0x1fff << 16 = src_depth: u16;
+        }
+        dw[6] = {
+            & 0x7 << 0 = src_element_size: u8;
+            & 0x1f << 3 = src_swizzle_mode: u8;
+            & 0x3 << 9 = src_dimension: u8;
+            & 0xf << 16 = src_mip_max: u8;
+            & 0xf << 20 = src_mip_id: u8;
+        }
+        dw[9] = {
+            & 0x3fff << 0 = dst_x: u16;
+            & 0x3fff << 16 = dst_y: u16;
+        }
+        dw[10] = {
+            & 0x1fff << 0 = dst_z: u16;
+            & 0x3fff << 16 = dst_width: u16;
+        }
+        dw[11] = {
+            & 0x3fff << 0 = dst_height: u16;
+            & 0x1fff << 16 = dst_depth: u16;
+        }
+        dw[12] = {
+            & 0x7 << 0 = dst_element_size: u8;
+            & 0x1f << 3 = dst_swizzle_mode: u8;
+            & 0x3 << 9 = dst_dimension: u8;
+            & 0xf << 16 = dst_mip_max: u8;
+            & 0xf << 20 = dst_mip_id: u8;
+        }
+        dw[13] = {
+            & 0x3fff << 0 = rect_x: u16;
+            & 0x3fff << 16 = rect_y: u16;
+        }
+        dw[14] = {
+            & 0x1fff << 0 = rect_z: u16;
+            & 0x3 << 16 = dst_sw: u8;
+            // added
+            & 0x7 << 18 = dst_cache_policy: u8;
+            & 0x3 << 24 = src_sw: u8;
+            // added
+            & 0x7 << 26 = src_cache_policy: u8;
+        }
+        dw[17] = {
+            & 0x7f << 0 = data_format: u8;
+            & 0x1 << 7 = color_transform_disable: bool;
+            & 0x1 << 8 = alpha_is_on_msb: bool;
+            & 0x7 << 9 = number_type: u8;
+            & 0x3 << 12 = surface_type: u8;
+            // added
+            & 0x1 << 14 = meta_llc: bool;
+            & 0x3 << 24 = max_comp_block_size: u8;
+            & 0x3 << 26 = max_uncomp_block_size: u8;
+            & 0x1 << 28 = write_compress_enable: bool;
+            & 0x1 << 29 = meta_tmz: bool;
+            & 0x1 << 31 = pipe_aligned: bool;
+        }
+        @join
+        dw[1], dw[2] = src_addr: u64;
+        dw[7], dw[8] = dst_addr: u64;
+        dw[15], dw[16] = meta_addr: u64;
     });
 }
 /// Rdna 3, 3.5
