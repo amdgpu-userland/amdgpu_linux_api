@@ -2802,6 +2802,10 @@ pub mod v5_0 {
 ///     * moved `dst_sw`
 ///     * added `dst_llc`
 ///     * added `src_llc`
+/// - COPY_STRUCT:
+///     * added `cpv`
+///     * added `linear_cache_policy`
+///     * added `struct_cache_policy`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -2947,6 +2951,31 @@ pub mod v5_2 {
         @join
         dw[3], dw[4] = src_addr: u64;
         dw[5], dw[6] = dst_addr: u64;
+    });
+
+    packet!(CopyStruct {
+        @bits
+        dw[0] = {
+            & 0x1 << 18 = tmz: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+            & 0x1 << 31 = detile: bool;
+        }
+        dw[5] = {
+            & 0x7ff << 0 = stride: u16;
+            & 0x3 << 16 = linear_sw: u8;
+            // added
+            & 0x7 << 18 = linear_cache_policy: u8;
+            & 0x3 << 24 = struct_sw: u8;
+            // added
+            & 0x7 << 26 = struct_cache_policy: u8;
+        }
+        @full
+        dw[3] = start_index: u32;
+        dw[4] = count: u32;
+        @join
+        dw[1], dw[2] = sb_addr: u64;
+        dw[6], dw[7] = linear_addr: u64;
     });
 }
 /// Rdna 3, 3.5
