@@ -1863,7 +1863,7 @@ pub mod v5_0 {
             & 0x7ffff << 13 = src_pitch: u32;
         }
         dw[5] = {
-            & 0xfffffff << 0 = src_slice_pitch: u32;
+            & 0x0fff_ffff << 0 = src_slice_pitch: u32;
         }
         dw[8] = {
             & 0x3fff << 0 = dst_x: u16;
@@ -2785,7 +2785,124 @@ pub mod v5_0 {
 ///
 /// ## Changes
 /// - Added `cpv` (Cache Policy Valid)
-pub mod v5_2 {}
+/// - COPY_LINEAR:
+///     * added `cpv`
+///     * added `dst_cache_policy`
+///     * added `src_cache_policy`
+///     * increased `count` size
+/// - COPY_LINEAR_SUBWIN:
+///     * added `cpv`
+///     * added `dst_cache_policy`
+///     * added `src_cache_policy`
+/// - Added COPY_LINEAR_SUBWIN_LARGE
+pub mod v5_2 {
+    pub use super::v5_0::*;
+
+    packet!(CopyLinear {
+        @bits
+        dw[0] = {
+            & 0x1 << 16 = encrypt: bool;
+            & 0x1 << 18 = tmz: bool;
+            // added
+            & 0x1 << 20 = cache_policy_valid: bool;
+            & 0x1 << 25 = backwards: bool;
+            & 0x1 << 27 = broadcast: bool;
+        }
+        dw[1] = {
+            // Increased size
+            & 0x3fffffff << 0 = count: u32;
+        }
+        dw[2] = {
+            & 0x3 << 16 = dst_sw: u8;
+            & 0x7 << 18 = dst_cache_policy: u8;
+            & 0x3 << 24 = src_sw: u8;
+            & 0x7 << 26 = src_cache_policy: u8;
+        }
+        @join
+        dw[3], dw[4] = src_addr: u64;
+        dw[5], dw[6] = dst_addr: u64;
+    });
+
+    packet!(CopyLinearSubwin {
+        @bits
+        dw[0] = {
+            & 0x1 << 18 = tmz: bool;
+            // added
+            & 0x1 << 19 = cache_policy_valid: bool;
+            & 0x7 << 29 = elementsize: u8;
+        }
+        dw[3] = {
+            & 0x3fff << 0 = src_x: u16;
+            & 0x3fff << 16 = src_y: u16;
+        }
+        dw[4] = {
+            & 0x1fff << 0 = src_z: u16;
+            & 0x7ffff << 13 = src_pitch: u32;
+        }
+        dw[5] = {
+            & 0x0fff_ffff << 0 = src_slice_pitch: u32;
+        }
+        dw[8] = {
+            & 0x3fff << 0 = dst_x: u16;
+            & 0x3fff << 16 = dst_y: u16;
+        }
+        dw[9] = {
+            & 0x1fff << 0 = dst_z: u16;
+            & 0x7ffff << 13 = dst_pitch: u32;
+        }
+        dw[10] = {
+            & 0x0fffffff << 0 = dst_slice_pitch: u32;
+        }
+        dw[11] = {
+            & 0x3fff << 0 = rect_x: u16;
+            & 0x3fff << 16 = rect_y: u16;
+        }
+        dw[12] = {
+            & 0x1fff << 0 = rect_z: u16;
+            & 0x3 << 16 = dst_sw: u8;
+            & 0x7 << 18 = dst_cache_policy: u8;
+            & 0x3 << 24 = src_sw: u8;
+            & 0x7 << 26 = src_cache_policy: u8;
+        }
+        @join
+        dw[1], dw[2] = src_addr: u64;
+        dw[6], dw[7] = dst_addr: u64;
+    });
+
+    // added
+    packet!(CopyLinearSubwinLarge {
+        @bits
+        dw[0] = {
+            & 0x1 << 18 = tmz: bool;
+            & 0x1 << 19 = cache_policy_valid: bool;
+        }
+        dw[16] = {
+            & 0xffff << 0 = dst_slice_pitch_47_32: u32;
+            & 0x3 << 16 = dst_sw: u8;
+            & 0x7 << 18 = dst_cache_policy: u8;
+            & 0x3 << 24 = src_sw: u8;
+            & 0x7 << 26 = src_cache_policy: u8;
+        }
+        @full
+        dw[3] = src_x: u32;
+        dw[4] = src_y: u32;
+        dw[5] = src_z: u32;
+        dw[6] = src_pitch: u32;
+        dw[11] = dst_x: u32;
+        dw[12] = dst_y: u32;
+        dw[13] = dst_z: u32;
+        dw[14] = dst_pitch: u32;
+        dw[15] = dst_slice_pitch_31_0: u32;
+        dw[17] = rect_x: u32;
+        dw[18] = rect_y: u32;
+        dw[19] = rect_z: u32;
+        @join
+        dw[1], dw[2] = src_addr: u64;
+        /// Only 48 bits
+        dw[7], dw[8] = src_slice_pitch: u64;
+        dw[9], dw[10] = dst_addr: u64;
+    });
+}
 /// Rdna 3, 3.5
 ///
 /// ## Changes
