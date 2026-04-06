@@ -1804,6 +1804,8 @@ pub mod v5_0 {
         }
         dw[1] = {
             & 0x3fffff << 0 = count: u32;
+            // In umr and pal
+            & 0xff << 24 = addr_pair_num: u8;
         }
         dw[2] = {
             & 0x7 << 3 = dst_mtype: u8;
@@ -2795,6 +2797,11 @@ pub mod v5_0 {
 ///     * added `dst_cache_policy`
 ///     * added `src_cache_policy`
 /// - Added COPY_LINEAR_SUBWIN_LARGE
+/// - COPY_PHYSICAL_LINEAR:
+///     * added `cpv`
+///     * moved `dst_sw`
+///     * added `dst_llc`
+///     * added `src_llc`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -2901,6 +2908,45 @@ pub mod v5_2 {
         /// Only 48 bits
         dw[7], dw[8] = src_slice_pitch: u64;
         dw[9], dw[10] = dst_addr: u64;
+    });
+
+    packet!(CopyPhysicalLinear {
+        @bits
+        dw[0] = {
+            & 0x1 << 18 = tmz: bool;
+            // added
+            & 0x1 << 19 = cache_policy_valid: bool;
+        }
+        dw[1] = {
+            & 0x3fffff << 0 = count: u32;
+            // In umr and pal
+            & 0xff << 24 = addr_pair_num: u8;
+        }
+        dw[2] = {
+            & 0x7 << 3 = dst_mtype: u8;
+            & 0x3 << 6 = dst_l2_policy: u8;
+            // added
+            & 0x1 << 8 = dst_llc: bool;
+            & 0x7 << 11 = src_mtype: u8;
+            & 0x3 << 14 = src_l2_policy: u8;
+            // added
+            & 0x1 << 16 = src_llc: bool;
+            // moved
+            & 0x3 << 17 = dst_sw: u8;
+            & 0x1 << 19 = dst_gcc: bool;
+            & 0x1 << 20 = dst_sys: bool;
+            & 0x1 << 21 = dst_log: bool;
+            & 0x1 << 22 = dst_snoop: bool;
+            & 0x1 << 23 = dst_gpa: bool;
+            & 0x3 << 24 = src_sw: u8;
+            & 0x1 << 27 = src_gcc: bool;
+            & 0x1 << 28 = src_sys: bool;
+            & 0x1 << 30 = src_snoop: bool;
+            & 0x1 << 31 = src_gpa: bool;
+        }
+        @join
+        dw[3], dw[4] = src_addr: u64;
+        dw[5], dw[6] = dst_addr: u64;
     });
 }
 /// Rdna 3, 3.5
