@@ -2813,6 +2813,12 @@ pub mod v5_0 {
 ///     * added `dst_cache_policy`
 ///     * added `src_cache_policy`
 ///     * added `meta_llc`
+/// - COPY_TILED:
+///     * added `cpv`
+///     * removed `linear_cc`
+///     * added `linear_cache_policy`
+///     * added `tile_cache_policy`
+///     * increased `count` size
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3063,6 +3069,57 @@ pub mod v5_2 {
         dw[1], dw[2] = src_addr: u64;
         dw[7], dw[8] = dst_addr: u64;
         dw[15], dw[16] = meta_addr: u64;
+    });
+
+    packet!(CopyTiled {
+        @bits
+        dw[0] = {
+            & 0x1 << 16 = encrypt: bool;
+            & 0x1 << 18 = tmz: bool;
+            // added
+            & 0x1 << 19 = cache_policy_valid: bool;
+            & 0x1 << 31 = detile: bool;
+        }
+        dw[3] = {
+            & 0x3fff << 0 = width: u16;
+        }
+        dw[4] = {
+            & 0x3fff << 0 = height: u16;
+            & 0x1fff << 16 = depth: u16;
+        }
+        dw[5] = {
+            & 0x7 << 0 = element_size: u8;
+            & 0x1f << 3 = swizzle_mode: u8;
+            & 0x3 << 9 = dimension: u8;
+            & 0xf << 16 = mip_max: u8;
+        }
+        dw[6] = {
+            & 0x3fff << 0 = x: u16;
+            & 0x3fff << 16 = y: u16;
+        }
+        dw[7] = {
+            & 0x1fff << 0 = z: u16;
+            & 0x3 << 16 = linear_sw: u8;
+            // added
+            & 0x7 << 18 = linear_cache_policy: u8;
+            // removed
+            // & 0x1 << 20 = linear_cc: bool;
+            & 0x3 << 24 = tile_sw: u8;
+            // added
+            & 0x7 << 26 = tile_cache_policy: u8;
+        }
+        dw[10] = {
+            & 0x7ffff << 0 = linear_pitch: u32;
+        }
+        dw[12] = {
+            // increased size
+            & 0x3fff_ffff << 0 = count: u32;
+        }
+        @full
+        dw[11] = linear_slice_pitch: u32;
+        @join
+        dw[1], dw[2] = tiled_addr: u64;
+        dw[8], dw[9] = linear_addr: u64;
     });
 }
 /// Rdna 3, 3.5
