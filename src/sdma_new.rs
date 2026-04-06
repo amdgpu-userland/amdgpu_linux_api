@@ -2827,6 +2827,9 @@ pub mod v5_0 {
 /// - DATA_FILL_MULTI:
 ///     * added `cpv`
 ///     * added `cache_policy`
+/// - FENCE:
+///     * added `cpv`
+///     * added `llc_policy`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3218,6 +3221,26 @@ pub mod v5_2 {
         dw[2] = dma_count: u32;
         @join
         dw[3], dw[4] = dst_addr: u64;
+    });
+
+    packet!(Fence {
+        @bits
+        dw[0] = {
+            & 0x7 << 16 = mtype: u8;
+            & 0x1 << 19 = gcc: bool;
+            & 0x1 << 20 = sys: bool;
+            & 0x1 << 22 = snp: bool;
+            & 0x1 << 23 = gpa: bool;
+            & 0x3 << 24 = l2_policy: u8;
+            // added
+            & 0x1 << 26 = llc_policy: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+        }
+        @full
+        dw[3] = data: u32;
+        @join
+        dw[1], dw[2] = addr: u64;
     });
 }
 /// Rdna 3, 3.5
