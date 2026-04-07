@@ -44,4 +44,4 @@ pub mod kfd;
 /// and read by the gpu.
 ///
 /// You can also decode them back
-pub mod sdma_new;
+pub mod sdma;

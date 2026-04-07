@@ -12,7 +12,7 @@ use amdgpu_linux_api::{
             map_memory_to_gpu, queue_type, runtime_enable, wait_events, wait_result,
         },
     },
-    sdma_new as sdma,
+    sdma,
 };
 use std::os::fd::{AsFd, AsRawFd};
 

@@ -11,7 +11,7 @@ use amdgpu_linux_api::{
         },
     },
     kfd::ioctl::VirtualAddress,
-    sdma_new as sdma,
+    sdma,
 };
 use std::os::fd::AsFd;
 use std::{
