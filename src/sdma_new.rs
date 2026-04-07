@@ -2794,15 +2794,11 @@ pub mod v5_0 {
 ///
 /// ## Changes
 /// - Added `cpv` (Cache Policy Valid)
-/// - COPY_LINEAR:
+/// - COPY_LINEAR, COPY_LINEAR_SUBWIN:
 ///     * added `cpv`
 ///     * added `dst_cache_policy`
 ///     * added `src_cache_policy`
 ///     * increased `count` size
-/// - COPY_LINEAR_SUBWIN:
-///     * added `cpv`
-///     * added `dst_cache_policy`
-///     * added `src_cache_policy`
 /// - Added COPY_LINEAR_SUBWIN_LARGE
 /// - COPY_PHYSICAL_LINEAR:
 ///     * added `cpv`
@@ -2829,29 +2825,13 @@ pub mod v5_0 {
 ///     * added `linear_cache_policy`
 ///     * added `tile_cache_policy`
 ///     * added `meta_llc`
-/// - DATA_FILL_MULTI:
+/// - DATA_FILL_MULTI, POLL_DBIT_WRITE_MEM, POLL_MEM_VERIFY, POLL_REGMEM, POLL_REG_WRITE_MEM:
 ///     * added `cpv`
 ///     * added `cache_policy`
 /// - FENCE:
 ///     * added `cpv`
 ///     * added `llc_policy`
-/// - MEM_INCR:
-///     * added `cpv`
-///     * added `llc_policy`
-///     * added `l2_policy`
-/// - POLL_DBIT_WRITE_MEM:
-///     * added `cpv`
-///     * added `cache_policy`
-/// - POLL_MEM_VERIFY:
-///     * added `cpv`
-///     * added `cache_policy`
-/// - POLL_REGMEM:
-///     * added `cpv`
-///     * added `cache_policy`
-/// - POLL_REG_WRITE_MEM:
-///     * added `cpv`
-///     * added `cache_policy`
-/// - TIMESTAMP_GET
+/// - MEM_INCR, TIMESTAMP_GET, TIMESTAMP_GET_GLOBAL:
 ///     * added `cpv`
 ///     * added `llc_policy`
 ///     * added `l2_policy`
@@ -3358,6 +3338,23 @@ pub mod v5_2 {
     });
 
     packet!(TimestampGet {
+        @bits
+        dw[0] = {
+            // added
+            & 0x3 << 24 = l2_policy: u8;
+            // added
+            & 0x1 << 26 = llc_policy: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+        }
+        dw[1] = {
+            & 0x1fffffff << 3 = write_addr_31_3: u32;
+        }
+        @full
+        dw[2] = write_addr_63_32: u32;
+    });
+
+    packet!(TimestampGetGlobal {
         @bits
         dw[0] = {
             // added
