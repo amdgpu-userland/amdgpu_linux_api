@@ -454,7 +454,7 @@ pub mod v5_0;
 /// ## Changes
 /// - Added `cpv` (Cache Policy Valid)
 /// - COPY_LINEAR,
-/// COPY_LINEAR_SUBWIN:
+///   COPY_LINEAR_SUBWIN:
 ///     * added `cpv`
 ///     * added `dst_cache_policy`
 ///     * added `src_cache_policy`
@@ -486,21 +486,21 @@ pub mod v5_0;
 ///     * added `tile_cache_policy`
 ///     * added `meta_llc`
 /// - DATA_FILL_MULTI,
-/// POLL_DBIT_WRITE_MEM,
-/// POLL_MEM_VERIFY,
-/// POLL_REGMEM,
-/// POLL_REG_WRITE_MEM,
-/// WRITE_TILED,
-/// WRITE_UNTILED,
-/// WRITE_INCR:
+///   POLL_DBIT_WRITE_MEM,
+///   POLL_MEM_VERIFY,
+///   POLL_REGMEM,
+///   POLL_REG_WRITE_MEM,
+///   WRITE_TILED,
+///   WRITE_UNTILED,
+///   WRITE_INCR:
 ///     * added `cpv`
 ///     * added `cache_policy`
 /// - FENCE:
 ///     * added `cpv`
 ///     * added `llc_policy`
 /// - MEM_INCR,
-/// TIMESTAMP_GET,
-/// TIMESTAMP_GET_GLOBAL:
+///   TIMESTAMP_GET,
+///   TIMESTAMP_GET_GLOBAL:
 ///     * added `cpv`
 ///     * added `llc_policy`
 ///     * added `l2_policy`
