@@ -2851,6 +2851,10 @@ pub mod v5_0 {
 /// - POLL_REG_WRITE_MEM:
 ///     * added `cpv`
 ///     * added `cache_policy`
+/// - TIMESTAMP_GET
+///     * added `cpv`
+///     * added `llc_policy`
+///     * added `l2_policy`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3351,6 +3355,23 @@ pub mod v5_2 {
         }
         @join
         dw[2], dw[3] = dst_addr: u64;
+    });
+
+    packet!(TimestampGet {
+        @bits
+        dw[0] = {
+            // added
+            & 0x3 << 24 = l2_policy: u8;
+            // added
+            & 0x1 << 26 = llc_policy: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+        }
+        dw[1] = {
+            & 0x1fffffff << 3 = write_addr_31_3: u32;
+        }
+        @full
+        dw[2] = write_addr_63_32: u32;
     });
 }
 /// Rdna 3, 3.5
