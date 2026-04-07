@@ -1,3 +1,5 @@
+use std::mem::MaybeUninit;
+
 use crate::{
     drm::{
         GemHandle, SyncobjHandle,
@@ -494,7 +496,7 @@ pub struct ModeCrtc {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct QueryHwIp {
-    pub r#type: u32,
+    pub r#type: HwIp,
 
     /// Index of the IP if there are more IPs of the same
     /// type. Ignored by AMDGPU_INFO_HW_IP_COUNT.
@@ -503,7 +505,7 @@ pub struct QueryHwIp {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ReadMMReag {
+pub struct ReadMMRReg {
     pub dword_offset: u32,
     /** number of registers to read */
     pub count: u32,
@@ -549,26 +551,57 @@ pub struct VideoCap {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub union InfoUnion {
-    mode_crtc: ModeCrtc,
-    query_hw_ip: QueryHwIp,
-    read_mmr_reg: ReadMMReag,
-    query_fw: QueryFw,
-    vbios_info: VbiosInfo,
-    sensor_info: SensorInfo,
-    video_cap: VideoCap,
+    pub mode_crtc: ModeCrtc,
+    pub query_hw_ip: QueryHwIp,
+    pub read_mmr_reg: ReadMMRReg,
+    pub query_fw: QueryFw,
+    pub vbios_info: VbiosInfo,
+    pub sensor_info: SensorInfo,
+    pub video_cap: VideoCap,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub struct InfoHwIp {
+    pub hw_ip_version_major: u32,
+    pub hw_ip_version_minor: u32,
+    pub capabilities_flags: u64,
+    pub ib_start_alignment: u32,
+    pub ib_size_alignment: u32,
+    /// Bitmask of available rings. Bit 0 means ring 0, etc.
+    pub available_rings: u32,
+    /// version info: bits 23:16 major, 15:8 minor, 7:0 revision
+    pub ip_discovery_version: u32,
+    pub userq_num_slots: u32,
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy)]
+pub enum InfoQuery {
+    AccelWorking = 0,
+    CrtcFromId = 1,
+    /// QueryHwIP
+    /// returns a InfoHwIp
+    HwIpInfo = 2,
+    /// QueryHwIP
+    /// returns a u32
+    ///
+    /// Seems redundant with HwIpInfo
+    HwIpCount = 3,
+    // todo: Add the rest
 }
 
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Info {
     /* Where the return value will be stored */
-    return_pointer: *mut (),
+    pub return_pointer: *mut (),
     /* The size of the return value. Just like "size" in "snprintf",
      * it limits how many bytes the kernel can write. */
-    return_size: u32,
+    pub return_size: u32,
     /* The query request id. */
-    query: u32,
-    quick_info: InfoUnion,
+    pub query: InfoQuery,
+    pub quick_info: MaybeUninit<InfoUnion>,
 }
 assert_layout!(Info, size = 32, align = 8);
 
@@ -672,7 +705,7 @@ pub struct CsWaitIn {
     /// - `0` means none to wait for
     /// - `!0u64` means wait for the latest sequence number
     pub handle: CsFence,
-    /// Absolute timeout in nanoseconds to wait
+    /// CLOCK_MONOTONIC absolute timeout (instant) in nanoseconds to wait until clamped to MAX_SCHEDULE_TIMEOUT (i64 max)
     pub timeout: u64,
     pub ip_type: HwIp,
     pub ip_instance: IpInstance,
