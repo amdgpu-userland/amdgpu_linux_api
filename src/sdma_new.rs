@@ -2839,6 +2839,9 @@ pub mod v5_0 {
 ///     * added `cpv`
 ///     * added `llc_policy`
 ///     * added `l2_policy`
+/// - POLL_DBIT_WRITE_MEM:
+///     * added `cpv`
+///     * added `cache_policy`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3264,6 +3267,24 @@ pub mod v5_2 {
         }
         @join
         dw[1], dw[2] = addr: u64;
+    });
+
+    packet!(PollDbitWriteMem {
+        @bits
+        dw[0] = {
+            & 0x3 << 16 = ea: u8;
+            // added
+            & 0x7 << 24 = cache_policy: u8;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+        }
+        dw[3] = {
+            & 0x0fff_ffff << 4 = start_page: u32;
+        }
+        @full
+        dw[4] = page_num: u32;
+        @join
+        dw[1], dw[2] = dst_addr: u64;
     });
 }
 /// Rdna 3, 3.5
