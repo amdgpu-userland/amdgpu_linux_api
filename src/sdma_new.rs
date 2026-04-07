@@ -2831,6 +2831,7 @@ pub mod v5_0 {
 /// POLL_MEM_VERIFY,
 /// POLL_REGMEM,
 /// POLL_REG_WRITE_MEM,
+/// WRITE_TILED,
 /// WRITE_INCR:
 ///     * added `cpv`
 ///     * added `cache_policy`
@@ -3395,6 +3396,47 @@ pub mod v5_2 {
         dw[3], dw[4] = mask: u64;
         dw[5], dw[6] = init: u64;
         dw[7], dw[8] = incr: u64;
+    });
+
+    packet!(WriteTiled<'a> {
+        @bits
+        dw[0] = {
+            & 0x1 << 16 = encrypt: bool;
+            & 0x1 << 18 = tmz: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+        }
+        dw[3] = {
+            & 0x3fff << 0 = width: u16;
+        }
+        dw[4] = {
+            & 0x3fff << 0 = height: u16;
+            & 0x1fff << 16 = depth: u16;
+        }
+        dw[5] = {
+            & 0x7 << 0 = element_size: u8;
+            & 0x1f << 3 = swizzle_mode: u8;
+            & 0x3 << 9 = dimension: u8;
+            & 0xf << 16 = mip_max: u8;
+        }
+        dw[6] = {
+            & 0x3fff << 0 = x: u16;
+            & 0x3fff << 16 = y: u16;
+        }
+        dw[7] = {
+            & 0x1fff << 0 = z: u16;
+            & 0x3 << 24 = sw: u8;
+            // added
+            & 0x7 << 26 = cache_policy: u8;
+        }
+        dw[8] = {
+            & 0xfffff << 0 = count: u32;
+        }
+        @join
+        dw[1], dw[2] = dst_addr: u64;
+        @dyn
+        dw[9..] = data: &'a [u32],
+        dw[8] & 0x000fffff << 0 = len
     });
 }
 /// Rdna 3, 3.5
