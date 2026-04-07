@@ -2794,7 +2794,8 @@ pub mod v5_0 {
 ///
 /// ## Changes
 /// - Added `cpv` (Cache Policy Valid)
-/// - COPY_LINEAR, COPY_LINEAR_SUBWIN:
+/// - COPY_LINEAR,
+/// COPY_LINEAR_SUBWIN:
 ///     * added `cpv`
 ///     * added `dst_cache_policy`
 ///     * added `src_cache_policy`
@@ -2825,13 +2826,20 @@ pub mod v5_0 {
 ///     * added `linear_cache_policy`
 ///     * added `tile_cache_policy`
 ///     * added `meta_llc`
-/// - DATA_FILL_MULTI, POLL_DBIT_WRITE_MEM, POLL_MEM_VERIFY, POLL_REGMEM, POLL_REG_WRITE_MEM:
+/// - DATA_FILL_MULTI,
+/// POLL_DBIT_WRITE_MEM,
+/// POLL_MEM_VERIFY,
+/// POLL_REGMEM,
+/// POLL_REG_WRITE_MEM,
+/// WRITE_INCR:
 ///     * added `cpv`
 ///     * added `cache_policy`
 /// - FENCE:
 ///     * added `cpv`
 ///     * added `llc_policy`
-/// - MEM_INCR, TIMESTAMP_GET, TIMESTAMP_GET_GLOBAL:
+/// - MEM_INCR,
+/// TIMESTAMP_GET,
+/// TIMESTAMP_GET_GLOBAL:
 ///     * added `cpv`
 ///     * added `llc_policy`
 ///     * added `l2_policy`
@@ -3369,6 +3377,24 @@ pub mod v5_2 {
         }
         @full
         dw[2] = write_addr_63_32: u32;
+    });
+
+    packet!(WriteIncr {
+        @bits
+        dw[0] = {
+            // added
+            & 0x7 << 24 = cache_policy: u8;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+        }
+        dw[9] = {
+            & 0x7ffff << 0 = count: u32;
+        }
+        @join
+        dw[1], dw[2] = dst_addr: u64;
+        dw[3], dw[4] = mask: u64;
+        dw[5], dw[6] = init: u64;
+        dw[7], dw[8] = incr: u64;
     });
 }
 /// Rdna 3, 3.5
