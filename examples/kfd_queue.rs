@@ -1,4 +1,3 @@
-#![feature(ptr_as_ref_unchecked)]
 use amdgpu_linux_api::drm::*;
 use amdgpu_linux_api::kfd::apertures::*;
 use amdgpu_linux_api::kfd::ioctl::*;

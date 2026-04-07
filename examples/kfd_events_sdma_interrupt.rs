@@ -12,7 +12,7 @@ use amdgpu_linux_api::{
             map_memory_to_gpu, queue_type, runtime_enable, wait_events, wait_result,
         },
     },
-    sdma,
+    sdma_new as sdma,
 };
 use std::os::fd::{AsFd, AsRawFd};
 
@@ -130,21 +130,21 @@ fn main() {
     let (a, b) = controlls.split_at_mut(4);
     let wptr = &mut a[0];
     let rptr = &mut b[0];
-    let mut fence = sdma::v5::Fence {
+    let mut fence = sdma::v5_2::Fence {
         addr: u64::from(0x10_000 + signal_event * 8),
         data: 1,
-        mtype: sdma::v5::Mtype::Uncached,
+        mtype: sdma::v5_2::Mtype::Uncached,
         ..Default::default()
     };
-    ring_mem[0..4].copy_from_slice(&fence.encode());
+    sdma::v5_2::Pkt::Fence(fence).encode_linear(&mut ring_mem[0..4]);
     fence.addr += 4;
     fence.data = 0;
-    ring_mem[4..8].copy_from_slice(&fence.encode());
+    sdma::v5_2::Pkt::Fence(fence).encode_linear(&mut ring_mem[4..8]);
 
-    let trap = sdma::v5::Trap {
+    let trap = sdma::v5_2::Trap {
         int_context: signal_event,
     };
-    ring_mem[8..10].copy_from_slice(&trap.encode());
+    sdma::v5_2::Pkt::Trap(trap).encode_linear(&mut ring_mem[8..10]);
 
     *wptr += 10;
 

@@ -160,6 +160,7 @@ macro_rules! packet {
         }
 ) => {
         $(#[$attr])*
+        #[derive(Default, Clone, Copy)]
         pub struct $variant $(<$vlife>)? {
         $($($(
             $(#[$fattr])*
@@ -1732,6 +1733,30 @@ pub mod v4_4 {
 ///
 /// ## Changes
 pub mod v5_0 {
+    field_enum![
+        Mtype: 0x7 {
+            #[default]
+            C_RW_US = 0x00000000,
+            RESERVED_1 = 0x00000001,
+            C_RO_S = 0x00000002,
+            Uncached = 3,
+            C_RW_S = 0x00000004,
+            RESERVED_5 = 0x00000005,
+            C_RO_US = 0x00000006,
+            RESERVED_7 = 0x00000007,
+        }
+    ];
+
+    field_enum!(
+        L2Policy: 0x3 {
+            #[default]
+            LRU = 0x00000000,
+            STREAM = 0x00000001,
+            NOA = 0x00000002,
+            BYPASS = 0x00000003,
+        }
+    );
+
     packet!(CopyLinear {
         @bits
         dw[0] = {
@@ -2516,7 +2541,7 @@ pub mod v5_0 {
     packet!(Fence {
         @bits
         dw[0] = {
-            & 0x7 << 16 = mtype: u8;
+            & 0x7 << 16 = mtype: Mtype;
             & 0x1 << 19 = gcc: bool;
             & 0x1 << 20 = sys: bool;
             & 0x1 << 22 = snp: bool;
@@ -3251,12 +3276,12 @@ pub mod v5_2 {
     packet!(Fence {
         @bits
         dw[0] = {
-            & 0x7 << 16 = mtype: u8;
+            & 0x7 << 16 = mtype: Mtype;
             & 0x1 << 19 = gcc: bool;
             & 0x1 << 20 = sys: bool;
             & 0x1 << 22 = snp: bool;
             & 0x1 << 23 = gpa: bool;
-            & 0x3 << 24 = l2_policy: u8;
+            & 0x3 << 24 = l2_policy: L2Policy;
             // added
             & 0x1 << 26 = llc_policy: bool;
             // added

@@ -11,7 +11,7 @@ use amdgpu_linux_api::{
         },
     },
     kfd::ioctl::VirtualAddress,
-    sdma,
+    sdma_new as sdma,
 };
 use std::os::fd::AsFd;
 use std::{
@@ -120,17 +120,17 @@ fn main() {
         unsafe { vram_ptr.cast::<u32>().cast_array().as_mut().unwrap() };
     map_bo_to_va(fd, handle, 0x10_000, GEM_SIZE);
 
-    let fence_pkt = sdma::v5::Fence {
+    let fence_pkt = sdma::v5_2::Fence {
         addr: u64::from(0x10_000u32 + 0x0_FFC),
         data: 1,
-        mtype: sdma::v5::Mtype::Uncached,
+        mtype: sdma::v5_2::Mtype::Uncached,
         ..Default::default()
     };
-    [vram[0], vram[1], vram[2], vram[3]] = fence_pkt.encode();
-    let int_pkt = sdma::v5::Trap {
+    sdma::v5_2::Pkt::Fence(fence_pkt).encode_linear(&mut vram[0..4]);
+    let int_pkt = sdma::v5_2::Trap {
         int_context: 0x0_FFC,
     };
-    [vram[4], vram[5]] = int_pkt.encode();
+    sdma::v5_2::Pkt::Trap(int_pkt).encode_linear(&mut vram[4..6]);
 
     let ctx_id = create_ctx(fd);
     let bo_list = create_bo_list(fd, &[handle]);

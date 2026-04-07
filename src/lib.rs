@@ -38,8 +38,6 @@ pub mod drm;
 /// break userspace between versions.
 pub mod kfd;
 
-pub mod sdma;
-
 /// Defines packets for different SDMA versions
 ///
 /// These packets are then to be writen to an indirect buffer or a ring buffer
