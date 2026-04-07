@@ -2832,6 +2832,7 @@ pub mod v5_0 {
 /// POLL_REGMEM,
 /// POLL_REG_WRITE_MEM,
 /// WRITE_TILED,
+/// WRITE_UNTILED,
 /// WRITE_INCR:
 ///     * added `cpv`
 ///     * added `cache_policy`
@@ -3437,6 +3438,26 @@ pub mod v5_2 {
         @dyn
         dw[9..] = data: &'a [u32],
         dw[8] & 0x000fffff << 0 = len
+    });
+
+    packet!(WriteUntiled<'a> {
+        @bits
+        dw[0] = {
+            & 0x1 << 16 = encrypt: bool;
+            & 0x1 << 18 = tmz: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+        }
+        dw[3] = {
+            & 0x3 << 24 = sw: u8;
+            // added
+            & 0x7 << 26 = cache_policy: u8;
+        }
+        @join
+        dw[1], dw[2] = dst_addr: u64;
+        @dyn
+        dw[4..] = data0: &'a [u32],
+        dw[3] & 0x000fffff << 0 = len
     });
 }
 /// Rdna 3, 3.5
