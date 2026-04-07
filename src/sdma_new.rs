@@ -1572,7 +1572,7 @@ pub mod v4_0 {
     packet!(PollRegWriteMem {
         @bits
         dw[1] = {
-            & 0x3fffffff << 2 = src_addr: u32;
+            & 0x3fff_ffff << 2 = src_addr: u32;
         }
         @join
         dw[2], dw[3] = dst_addr: u64;
@@ -1584,7 +1584,7 @@ pub mod v4_0 {
             & 0x3 << 16 = ea: u8;
         }
         dw[3] = {
-            & 0xfffffff << 4 = start_page: u32;
+            & 0x0fff_ffff << 4 = start_page: u32;
         }
         @full
         dw[4] = page_num: u32;
@@ -2842,6 +2842,9 @@ pub mod v5_0 {
 /// - POLL_DBIT_WRITE_MEM:
 ///     * added `cpv`
 ///     * added `cache_policy`
+/// - POLL_MEM_VERIFY:
+///     * added `cpv`
+///     * added `cache_policy`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3285,6 +3288,26 @@ pub mod v5_2 {
         dw[4] = page_num: u32;
         @join
         dw[1], dw[2] = dst_addr: u64;
+    });
+
+    packet!(PollMemVerify {
+        @bits
+        dw[0] = {
+            // added
+            & 0x7 << 24 = cache_policy: u8;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+            & 0x1 << 31 = mode: bool;
+        }
+        @full
+        dw[1] = pattern: u32;
+        dw[12] = reserved: u32;
+        @join
+        dw[2], dw[3] = cmp0_start: u64;
+        dw[4], dw[5] = cmp0_end: u64;
+        dw[6], dw[7] = cmp1_start: u64;
+        dw[8], dw[9] = cmp1_end: u64;
+        dw[10], dw[11] = rec: u64;
     });
 }
 /// Rdna 3, 3.5
