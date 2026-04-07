@@ -2725,6 +2725,17 @@ pub mod v5_0 {
         dw[1], dw[2] = addr: u64;
     });
 
+    packet!(RegisterRmw {
+        @bits
+        dw[0] = {
+            & 0x3_ffff << 0 = addr: u32;
+            & 0xfff << 20 = aperture_id: u16;
+        }
+        @full
+        dw[2] = mask: u32;
+        dw[3] = value: u32;
+    });
+
     unify!(Pkt<'pkt> {
         @match_extra op =1, subop = 0, dw[0] >> 27 & 0x1 => {
             0 => CopyLinear
@@ -2781,8 +2792,7 @@ pub mod v5_0 {
         op = 13, subop = 1 => TimestampGet
         op = 13, subop = 2 => TimestampGetGlobal
         op = 14, subop = 0 => SrbmWrite
-        // only in UMR
-        //op = 14, subop = 1 => RMW_REGISTER
+        op = 14, subop = 1 => RegisterRmw
         op = 15 => PreExe
         op = 16 => GpuvmInv
         op = 17 => GcrReq
@@ -3458,6 +3468,71 @@ pub mod v5_2 {
         @dyn
         dw[4..] = data0: &'a [u32],
         dw[3] & 0x000fffff << 0 = len
+    });
+
+    unify!(Pkt<'pkt> {
+        @match_extra op =1, subop = 0, dw[0] >> 27 & 0x1 => {
+            0 => CopyLinear
+            1 => CopyBroadcastLinear
+        }
+
+        // discriminant not confirmed
+        // 27 -> broadcast
+        // 26 -> videocopy (frame_to_field in umr)
+        //
+        // Since it uses the same mem layout in umr irrespective of videocopy I'm
+        // going to treat it as if only broadcast is a discriminant
+        @match_extra op = 1, subop = 1, dw[0] >> 27 & 0x1 => {
+            0 => CopyTiled
+            1 => CopyL2tBroadcast
+        }
+        op = 0 => Nop<'pkt>
+        op = 1, subop = 3 => CopyStruct
+        op = 1, subop = 4 => CopyLinearSubwin
+        op = 1, subop = 5 => CopyTiledSubwin
+        op = 1, subop = 6 => CopyT2t
+        op = 1, subop = 7 => CopyDirtyPage
+        op = 1, subop = 8 => CopyPhysicalLinear
+        op = 1, subop = 16 => CopyLinearBc
+        op = 1, subop = 17 => CopyTiledBc
+        op = 1, subop = 20 => CopyLinearSubwinBc
+        op = 1, subop = 21 => CopyTiledSubwinBc
+        op = 1, subop = 22 => CopyT2tBc
+        // added
+        op = 1, subop = 36 => CopyLinearSubwinLarge
+        op = 2, subop = 0 => WriteUntiled<'pkt>
+        op = 2, subop = 1 => WriteTiled<'pkt>
+        op = 2, subop = 17 => WriteTiledBc<'pkt>
+        op = 4 => Indirect
+        op = 5, subop = 0 => Fence
+        // Only in UMR
+        //op = 5, subop = 1 => FenceConditionalInterrupt
+        //op = 5, subop = 3 => FenceProtected
+        op = 6 => Trap
+        op = 7, subop = 0 => Semaphore
+        op = 7, subop = 1 => MemIncr
+        op = 8, subop = 0 => PollRegmem
+        op = 8, subop = 1 => PollRegWriteMem
+        op = 8, subop = 2 => PollDbitWriteMem
+        op = 8, subop = 3 => PollMemVerify
+        op = 8, subop = 4 => VmInvalidation
+        op = 9 => CondExe
+        op = 10 => Atomic
+        op = 11, subop = 0 => ConstantFill
+        op = 11, subop = 1 => DataFillMulti
+        op = 12, subop = 0 => WriteIncr
+        op = 12, subop = 1 => PtepdeCopy
+        op = 12, subop = 2 => PtepdeRmw
+        op = 12, subop = 3 => PtepdeCopyBackwards
+        op = 13, subop = 0 => TimestampSet
+        op = 13, subop = 1 => TimestampGet
+        op = 13, subop = 2 => TimestampGetGlobal
+        op = 14, subop = 0 => SrbmWrite
+        op = 14, subop = 1 => RegisterRmw
+        op = 15 => PreExe
+        op = 16 => GpuvmInv
+        op = 17 => GcrReq
+        op = 32 => DummyTrap
     });
 }
 /// Rdna 3, 3.5
