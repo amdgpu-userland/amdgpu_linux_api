@@ -2720,6 +2720,11 @@ pub mod v5_0 {
         dw[0] & 0x3fff << 16 = len
     });
 
+    packet!(MemIncr {
+        @join
+        dw[1], dw[2] = addr: u64;
+    });
+
     unify!(Pkt<'pkt> {
         @match_extra op =1, subop = 0, dw[0] >> 27 & 0x1 => {
             0 => CopyLinear
@@ -2758,7 +2763,7 @@ pub mod v5_0 {
         //op = 5, subop = 3 => FenceProtected
         op = 6 => Trap
         op = 7, subop = 0 => Semaphore
-        //op = 7, subop = 1 => WriteIncr
+        op = 7, subop = 1 => MemIncr
         op = 8, subop = 0 => PollRegmem
         op = 8, subop = 1 => PollRegWriteMem
         op = 8, subop = 2 => PollDbitWriteMem
@@ -2830,6 +2835,10 @@ pub mod v5_0 {
 /// - FENCE:
 ///     * added `cpv`
 ///     * added `llc_policy`
+/// - MEM_INCR:
+///     * added `cpv`
+///     * added `llc_policy`
+///     * added `l2_policy`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3239,6 +3248,20 @@ pub mod v5_2 {
         }
         @full
         dw[3] = data: u32;
+        @join
+        dw[1], dw[2] = addr: u64;
+    });
+
+    packet!(MemIncr {
+        @bits
+        dw[0] = {
+            // added
+            & 0x3 << 24 = l2_policy: u8;
+            // added
+            & 0x1 << 26 = llc_policy: bool;
+            // added
+            & 0x1 << 28 = cache_policy_valid: bool;
+        }
         @join
         dw[1], dw[2] = addr: u64;
     });
