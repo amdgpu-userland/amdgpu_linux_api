@@ -2845,6 +2845,9 @@ pub mod v5_0 {
 /// - POLL_MEM_VERIFY:
 ///     * added `cpv`
 ///     * added `cache_policy`
+/// - POLL_REGMEM:
+///     * added `cpv`
+///     * added `cache_policy`
 pub mod v5_2 {
     pub use super::v5_0::*;
 
@@ -3308,6 +3311,28 @@ pub mod v5_2 {
         dw[6], dw[7] = cmp1_start: u64;
         dw[8], dw[9] = cmp1_end: u64;
         dw[10], dw[11] = rec: u64;
+    });
+
+    packet!(PollRegmem {
+        @bits
+        dw[0] = {
+            // added
+            & 0x7 << 20 = cache_policy: u8;
+            // added
+            & 0x1 << 24 = cache_policy_valid: bool;
+            & 0x1 << 26 = hdp_flush: bool;
+            & 0x7 << 28 = func: u8;
+            & 0x1 << 31 = mem_poll: bool;
+        }
+        dw[5] = {
+            & 0xffff << 0 = interval: u16;
+            & 0xfff << 16 = retry_count: u16;
+        }
+        @full
+        dw[3] = value: u32;
+        dw[4] = mask: u32;
+        @join
+        dw[1], dw[2] = addr: u64;
     });
 }
 /// Rdna 3, 3.5
