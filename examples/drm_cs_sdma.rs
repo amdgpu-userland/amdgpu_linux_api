@@ -162,29 +162,24 @@ fn main() {
     let res = unsafe { ioctl::amd::cs(fd, &mut args) };
     assert!(res.is_ok());
     let cs_handle = unsafe { args.out }.handle;
-    //std::thread::sleep(Duration::from_millis(1));
 
     let t0 = std::time::SystemTime::now();
 
-    loop {
-        let mut args = ioctl::amd::CsWait {
-            in_: ioctl::amd::CsWaitIn {
-                handle: cs_handle,
-                timeout: u64::MAX,
-                ip_type: ioctl::amd::HwIp::DMA,
-                ip_instance: 0,
-                ring: 0,
-                ctx_id,
-            },
-        };
-        let res = unsafe { ioctl::amd::cs_wait(fd, &mut args) };
-        assert!(res.is_ok());
-        let wait_status = unsafe { args.out }.status;
-        if wait_status == 0 {
-            break;
-        }
-        std::thread::sleep(Duration::from_micros(3));
-    }
+    let mut args = ioctl::amd::CsWait {
+        in_: ioctl::amd::CsWaitIn {
+            handle: cs_handle,
+            timeout: u64::MAX,
+            ip_type: ioctl::amd::HwIp::DMA,
+            ip_instance: 0,
+            ring: 0,
+            ctx_id,
+        },
+    };
+    let res = unsafe { ioctl::amd::cs_wait(fd, &mut args) };
+    assert!(res.is_ok());
+    let wait_status = unsafe { args.out }.status;
+    assert!(wait_status == 0);
+
     let t1 = std::time::SystemTime::now();
     println!("Duration: {:?}", t1.duration_since(t0).unwrap());
     assert!(vram[1023] == 1);
