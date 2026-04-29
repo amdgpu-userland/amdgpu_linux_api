@@ -8,9 +8,14 @@ pub type SyncobjHandle = u32;
 
 mod hidden;
 pub mod ioctl;
+mod set_client_name;
 
 use hidden::open_file_check_version;
 use hidden::verify_if_drm_fd_is_authenticated;
+
+pub use set_client_name::ClientName;
+pub use set_client_name::ClientNameError;
+pub use set_client_name::set_client_name;
 
 /// Any /dev/dri/* file
 ///

@@ -58,3 +58,14 @@ define_drm_ioctl!(
     /// # SAFETY
     /// todo
     prime_fd_to_handle, PrimeHandle, 0x2e, WR);
+
+define_drm_ioctl!(
+    /// Attach a name to a drm_file
+    ///
+    /// Having a name allows for easier tracking and debugging.
+    ///
+    /// # SAFETY
+    /// The length of the name (without null ending char) must be
+    /// <= DRM_CLIENT_NAME_MAX_LEN.
+    /// The call will fail if the name contains whitespaces or non-printable chars.
+    set_client_name, SetClientName, 0xD1, WR);

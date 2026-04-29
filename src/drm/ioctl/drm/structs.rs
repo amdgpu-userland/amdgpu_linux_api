@@ -41,3 +41,10 @@ pub struct PrimeHandle {
     pub fd: RawFd,
 }
 assert_layout!(PrimeHandle, size = 12, align = 4);
+
+pub const CLIENT_NAME_MAX_LEN: usize = 64;
+pub struct SetClientName {
+    pub name_len: usize,
+    pub name: *const u8,
+}
+assert_layout!(SetClientName, size = 16, align = 8);

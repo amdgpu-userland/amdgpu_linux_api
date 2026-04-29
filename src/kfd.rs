@@ -191,6 +191,17 @@ pub enum AcquireVmResult<T: AcquireVm> {
     Unexpected(ioctl::Errno),
 }
 
+impl<T: AcquireVm> AcquireVmResult<T> {
+    pub fn expect_acquired(self) -> AcquiredVm<T> {
+        match self {
+            AcquireVmResult::Ok(acquired_vm) => acquired_vm,
+            AcquireVmResult::GpuNotFound(_) => panic!("gpu not found"),
+            AcquireVmResult::MemoryAlreadyAcquiredWithDifferentDrmFile(acquired_vm) => acquired_vm,
+            AcquireVmResult::Unexpected(e) => panic!("unexpected: {e}"),
+        }
+    }
+}
+
 pub trait AcquireVm: KfdFile + Sized {
     /// This could take a &self instead, since all opened kfd files point to the same object in the
     /// kernel and closing them don't release resources / state.
