@@ -1,11 +1,9 @@
-use std::{
-    ops::Deref,
-    os::fd::{AsFd, AsRawFd, OwnedFd},
-};
+use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 
 pub type GemHandle = u32;
 pub type SyncobjHandle = u32;
 
+pub mod auth;
 mod hidden;
 pub mod ioctl;
 mod set_client_name;
@@ -45,6 +43,14 @@ pub unsafe trait DrmRenderFile: DrmFile {}
 /// Must be a drm file handled by amdgpu driver
 pub unsafe trait AmdgpuDrmFile: DrmFile {}
 
+pub struct PrimaryClient<Auth, Origin, Access> {
+    file: OwnedFd,
+    // Cannot be PhantomData because Leassed client has restricted permissions to specific objects
+    _auth: Auth,
+    _origin: std::marker::PhantomData<Origin>,
+    _access: std::marker::PhantomData<Access>,
+}
+
 pub struct AmdgpuDrmRender3_64 {
     fd: OwnedFd,
 }
@@ -69,9 +75,6 @@ impl AsFd for AmdgpuDrmRender3_64 {
 pub struct AmdgpuDrmPrimary3_64 {
     fd: OwnedFd,
 }
-
-impl VerifyAuthenticated for AmdgpuDrmPrimary3_64 {}
-impl AcquireMaster for AmdgpuDrmPrimary3_64 {}
 
 #[derive(Debug)]
 pub enum OpenError {
@@ -98,85 +101,6 @@ impl AsFd for AmdgpuDrmPrimary3_64 {
 unsafe impl DrmFile for AmdgpuDrmPrimary3_64 {}
 unsafe impl DrmPrimaryFile for AmdgpuDrmPrimary3_64 {}
 unsafe impl AmdgpuDrmFile for AmdgpuDrmPrimary3_64 {}
-
-/// A primary client whose TID != current_tid
-///
-/// It has restrictions around MASTER status
-#[derive(Debug)]
-pub struct ForeignPrimaryClient {}
-
-#[derive(Debug)]
-pub enum SetMasterError {
-    RootPermissionsRequired,
-    OtherMasterAlreadySet,
-    ThisDrmClientDoesntHaveAMasterLinked,
-    RunOutOfMemory,
-}
-
-pub trait VerifyAuthenticated: DrmPrimaryFile + Sized {
-    fn verify(self) -> Result<Authenticated<Self>, Self> {
-        let fd = self.as_fd().as_raw_fd();
-        if !verify_if_drm_fd_is_authenticated(fd) {
-            return Err(self);
-        }
-        Ok(Authenticated(self))
-    }
-}
-
-pub trait AcquireMaster: DrmPrimaryFile + Sized {
-    fn acquire(self) -> Result<Master<Self>, (Self, SetMasterError)> {
-        if let Err(e) = unsafe { ioctl::drm::set_master(self.as_fd().as_raw_fd()) } {
-            let err = match e {
-                libc::EACCES => SetMasterError::RootPermissionsRequired,
-                libc::EBUSY => SetMasterError::OtherMasterAlreadySet,
-                libc::EINVAL => SetMasterError::ThisDrmClientDoesntHaveAMasterLinked,
-                libc::ENOMEM => SetMasterError::RunOutOfMemory,
-                _ => todo!("set_master: {e}"),
-            };
-            return Err((self, err));
-        }
-        Ok(Master(self))
-    }
-}
-
-pub struct Master<T: DrmPrimaryFile + Sized>(T);
-
-impl<T: DrmPrimaryFile> Deref for Master<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<T: DrmPrimaryFile + Sized> Master<T> {
-    pub fn drop_master(self) -> Authenticated<T> {
-        if let Err(e) = unsafe { ioctl::drm::drop_master(self.0.as_fd().as_raw_fd()) } {
-            panic!("Unexpected drop_master: {e}");
-        }
-
-        let Master(inner) = self;
-        Authenticated(inner)
-    }
-}
-
-pub struct Authenticated<T: DrmPrimaryFile>(T);
-
-impl<T: DrmPrimaryFile> Deref for Authenticated<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-unsafe impl<T: AmdgpuDrmFile + DrmPrimaryFile> AmdgpuDrmFile for Authenticated<T> {}
-unsafe impl<T: DrmPrimaryFile> DrmPrimaryFile for Authenticated<T> {}
-unsafe impl<T: DrmPrimaryFile> DrmFile for Authenticated<T> {}
-impl<T: DrmPrimaryFile> AsFd for Authenticated<T> {
-    fn as_fd(&self) -> std::os::unix::prelude::BorrowedFd<'_> {
-        self.0.as_fd()
-    }
-}
 
 /// Creating GEM objects
 ///
@@ -210,7 +134,6 @@ pub trait AmdgpuGemCreate: AmdgpuDrmFile {
     fn gem_create_doorbell() {}
 }
 
-impl AmdgpuGemCreate for Authenticated<AmdgpuDrmPrimary3_64> {}
 impl AmdgpuGemCreate for AmdgpuDrmRender3_64 {}
 
 pub trait AmdgpuGemMetadata: AmdgpuDrmFile {}
