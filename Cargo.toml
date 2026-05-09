@@ -7,8 +7,13 @@ repository = "https://github.com/amdgpu-userland/amdgpu_linux_api"
 license = "GPL-2.0-only"
 publish = false
 
+[features]
+default = ["async"]
+async = ["tokio"]
+
 [dependencies]
 libc = "0.2.182"
+tokio = { version = "1.52.2", default-features = false, features = ["net"], optional = true }
 
 [dev-dependencies]
 nix = { version = "0.31.2", features = ["signal"] }

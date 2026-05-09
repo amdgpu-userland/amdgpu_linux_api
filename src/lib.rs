@@ -20,6 +20,8 @@ macro_rules! GPU_PAGE_SIZE {
     };
 }
 
+pub mod capabilities;
+
 /// Think OpenGL and Vulkan
 pub mod drm;
 

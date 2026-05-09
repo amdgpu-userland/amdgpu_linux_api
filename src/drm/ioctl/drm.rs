@@ -1,3 +1,4 @@
+#![expect(clippy::missing_safety_doc)]
 use super::DRM_IOCTL_BASE;
 
 mod structs;
@@ -28,6 +29,7 @@ define_drm_ioctl!(
     /// # SAFETY
     /// todo
     version, Version, 0x0, WR);
+define_drm_ioctl!(get_magic, Auth, 0x2, R);
 define_drm_ioctl!(
     /// Almost deprecated
     ///
@@ -38,6 +40,12 @@ define_drm_ioctl!(
     /// # SAFETY
     /// todo
     get_client, Client, 0x05, WR);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    get_cap, GetCap, 0x0c, WR);
+define_drm_ioctl!(auth_magic, Auth, 0x11, W);
 define_drm_ioctl!(
     ///
     /// # SAFETY
@@ -58,6 +66,28 @@ define_drm_ioctl!(
     /// # SAFETY
     /// todo
     prime_fd_to_handle, PrimeHandle, 0x2e, WR);
+
+define_drm_ioctl!(
+    /// It does validate objects
+    ///
+    /// # SAFETY
+    /// todo
+    mode_create_lease, CreateLease, 0xC6, WR);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    mode_list_lessees, ListLessees, 0xC7, WR);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    mode_get_lease, GetLease, 0xC8, WR);
+define_drm_ioctl!(
+    ///
+    /// # SAFETY
+    /// todo
+    mode_revoke_lease, RevokeLease, 0xC9, WR);
 
 define_drm_ioctl!(
     /// Attach a name to a drm_file

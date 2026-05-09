@@ -3,7 +3,9 @@ use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 pub type GemHandle = u32;
 pub type SyncobjHandle = u32;
 
+pub mod amdgpu;
 pub mod auth;
+pub mod driver_capabilities;
 mod hidden;
 pub mod ioctl;
 mod set_client_name;
@@ -43,12 +45,18 @@ pub unsafe trait DrmRenderFile: DrmFile {}
 /// Must be a drm file handled by amdgpu driver
 pub unsafe trait AmdgpuDrmFile: DrmFile {}
 
-pub struct PrimaryClient<Auth, Origin, Access> {
+pub struct PrimaryClient<Auth, Origin, Access, Driver> {
     file: OwnedFd,
     // Cannot be PhantomData because Leassed client has restricted permissions to specific objects
     _auth: Auth,
     _origin: std::marker::PhantomData<Origin>,
     _access: std::marker::PhantomData<Access>,
+    _driver_specific: Driver,
+}
+
+pub struct RenderClient<Driver> {
+    _file: OwnedFd,
+    _driver_specific: Driver,
 }
 
 pub struct AmdgpuDrmRender3_64 {
