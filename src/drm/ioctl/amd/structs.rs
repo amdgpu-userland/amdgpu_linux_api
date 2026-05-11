@@ -576,6 +576,191 @@ pub struct InfoHwIp {
 }
 
 #[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AmdgpuVramType {
+    Unknown = 0,
+    Gddr1 = 1,
+    Ddr2 = 2,
+    Gddr3 = 3,
+    Gddr4 = 4,
+    Gddr5 = 5,
+    Hbm = 6,
+    Ddr3 = 7,
+    Ddr4 = 8,
+    Gddr6 = 9,
+    Ddr5 = 10,
+    Lpddr4 = 11,
+    Lpddr5 = 12,
+    Hbm3e = 13,
+}
+
+pub mod ids_flags {
+    pub type IdsFlags = u64;
+
+    /// Is APU
+    pub const FUSION: IdsFlags = 0b1;
+    /// MCBP
+    pub const PREEMPTION: IdsFlags = 0b10;
+    pub const TMZ: IdsFlags = 0b100;
+    pub const CONFORMANT_TRUNC_COORD: IdsFlags = 0b1000;
+    pub const GAMG_SUBMIT: IdsFlags = 0b10000;
+
+    pub const MODE_MASK: IdsFlags = 0b11__0000_0000;
+    pub const MODE_SHIFT: IdsFlags = 8;
+    #[repr(u64)]
+    #[derive(Debug, Clone, Copy)]
+    pub enum Mode {
+        /// Default
+        SriovPhysicalFunction = 0,
+        SriovVirtualFunction = 1,
+        PciPassthrough = 2,
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct InfoDevice {
+    /// PCI Device ID
+    pub device_id: u32,
+    /// Internal chip revision: A0, A1, etc.)
+    pub chip_rev: u32,
+    pub external_rev: u32,
+    /// Revision id in PCI Config space
+    pub pci_rev: u32,
+    pub family: u32,
+    pub num_shader_engines: u32,
+    pub num_shader_arrays_per_engine: u32,
+    /// in KHz
+    pub gpu_counter_freq: u32,
+    pub max_engine_clock: u64,
+    pub max_memory_clock: u64,
+    /// cu information
+    pub cu_active_number: u32,
+    /// NOTE: cu_ao_mask is INVALID, DON'T use it
+    pub cu_ao_mask: u32,
+    pub cu_bitmap: [[u32; 4]; 4],
+    /// Render backend pipe mask. One render backend is CB+DB.
+    pub enabled_rb_pipes_mask: u32,
+    pub num_rb_pipes: u32,
+    pub num_hw_gfx_contexts: u32,
+    /// PCIe version (the smaller of the GPU and the CPU/motherboard)
+    pub pcie_gen: u32,
+    pub ids_flags: ids_flags::IdsFlags,
+    /// Starting virtual address for UMDs.
+    pub virtual_address_offset: u64,
+    /// The maximum virtual address
+    pub virtual_address_max: u64,
+    /// Required alignment of virtual addresses.
+    pub virtual_address_alignment: u32,
+    /// Page table entry - fragment size
+    pub pte_fragment_size: u32,
+    pub gart_page_size: u32,
+    /// constant engine ram size
+    pub ce_ram_size: u32,
+    /// video memory type info
+    pub vram_type: AmdgpuVramType,
+    /// video memory bit width
+    pub vram_bit_width: u32,
+    /// vce harvesting instance
+    pub vce_harvest_config: u32,
+    /// gfx double offchip LDS buffers
+    pub gc_double_offchip_lds_buf: u32,
+    /// NGG Primitive Buffer
+    pub prim_buf_gpu_addr: u64,
+    /// NGG Position Buffer
+    pub pos_buf_gpu_addr: u64,
+    /// NGG Control Sideband
+    pub cntl_sb_buf_gpu_addr: u64,
+    /// NGG Parameter Cache
+    pub param_buf_gpu_addr: u64,
+    pub prim_buf_size: u32,
+    pub pos_buf_size: u32,
+    pub cntl_sb_buf_size: u32,
+    pub param_buf_size: u32,
+    /// wavefront size
+    pub wave_front_size: u32,
+    /// shader visible vgprs
+    pub num_shader_visible_vgprs: u32,
+    /// CU per shader array
+    pub num_cu_per_sh: u32,
+    /// number of tcc blocks
+    pub num_tcc_blocks: u32,
+    /// gs vgt table depth
+    pub gs_vgt_table_depth: u32,
+    /// gs primitive buffer depth
+    pub gs_prim_buffer_depth: u32,
+    /// max gs wavefront per vgt
+    pub max_gs_waves_per_vgt: u32,
+    /// PCIe number of lanes (the smaller of the GPU and the CPU/motherboard)
+    pub pcie_num_lanes: u32,
+    /// always on cu bitmap
+    pub cu_ao_bitmap: [[u32; 4]; 4],
+    /// Starting high virtual address for UMDs.
+    pub high_va_offset: u64,
+    /// The maximum high virtual address
+    pub high_va_max: u64,
+    /// gfx10 pa_sc_tile_steering_override
+    pub pa_sc_tile_steering_override: u32,
+    /// disabled TCCs
+    pub tcc_disabled_mask: u64,
+    pub min_engine_clock: u64,
+    pub min_memory_clock: u64,
+    /// The following fields are only set on gfx11+, older chips set 0.
+    /// AKA GL0, VMEM cache
+    pub tcp_cache_size: u32,
+    pub num_sqc_per_wgp: u32,
+    /// AKA SMEM cache
+    pub sqc_data_cache_size: u32,
+    pub sqc_inst_cache_size: u32,
+    pub gl1c_cache_size: u32,
+    pub gl2c_cache_size: u32,
+    /// AKA infinity cache
+    pub mall_size: u64,
+    /// high 32 bits of the rb pipes mask
+    pub enabled_rb_pipes_mask_hi: u32,
+    /// shadow area size for gfx11
+    pub shadow_size: u32,
+    /// shadow area base virtual alignment for gfx11
+    pub shadow_alignment: u32,
+    /// context save area size for gfx11
+    pub csa_size: u32,
+    /// context save area base virtual alignment for gfx11
+    pub csa_alignment: u32,
+    /// Userq IP mask (1 << AMDGPU_HW_IP_*)
+    pub userq_ip_mask: u32,
+    pub pad: u32,
+}
+assert_layout!(InfoDevice, size = 448, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct HeapInfo {
+    /// max. physical memory
+    pub total_heap_size: u64,
+
+    /// Theoretical max. available memory in the given heap
+    pub usable_heap_size: u64,
+
+    /// Number of bytes allocated in the heap. This includes all processes
+    /// and private allocations in the kernel. It changes when new buffers
+    /// are allocated, freed, and moved. It cannot be larger than
+    /// heap_size.
+    pub heap_usage: u64,
+
+    /// Theoretical possible max. size of buffer which
+    /// could be allocated in the given heap
+    pub max_allocation: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct InfoMemory {
+    pub vram: HeapInfo,
+    pub cpu_accessible_vram: HeapInfo,
+    pub gtt: HeapInfo,
+}
+
+#[repr(u32)]
 #[derive(Clone, Copy)]
 pub enum InfoQuery {
     AccelWorking = 0,
@@ -589,6 +774,8 @@ pub enum InfoQuery {
     /// Seems redundant with HwIpInfo
     HwIpCount = 3,
     // todo: Add the rest
+    DevInfo = 0x16,
+    Memory = 0x19,
 }
 
 #[repr(C)]

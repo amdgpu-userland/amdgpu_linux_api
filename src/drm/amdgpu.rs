@@ -58,6 +58,17 @@ pub struct Amdgpu<Bar, Mcbp> {
     mcbp: Mcbp,
 }
 
+/// An actual device handled by the amdgpu driver, from the driver's point of view
+pub struct Gpu<ReBAR, Apu, Mcbp, Tmz, CoordTruncMode, Virtualization, GangSubmission> {
+    _has_large_bar: PhantomData<ReBAR>,
+    _is_apu: PhantomData<Apu>,
+    _mcbp_on: PhantomData<Mcbp>,
+    _tmz_on: PhantomData<Tmz>,
+    _coord_trunc_mode: PhantomData<CoordTruncMode>,
+    _virt_mode: PhantomData<Virtualization>,
+    _allow_gang_submission: PhantomData<GangSubmission>,
+}
+
 // Drm doesn't have a particular version as it's more like scaffolding for other drivers, that may
 // chose to change things up
 
