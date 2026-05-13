@@ -1,4 +1,4 @@
-use std::mem::MaybeUninit;
+use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, rc::Rc};
 
 pub type CapSet = u64;
 
@@ -11,9 +11,9 @@ struct CapUserHeader {
     pid: i32,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy)]
 #[repr(C)]
-pub struct ThreadCapabilities {
+struct CapUserData {
     effective_s0: u32,
     permitted_s0: u32,
     inheritable_s0: u32,
@@ -22,20 +22,37 @@ pub struct ThreadCapabilities {
     inheritable_s1: u32,
 }
 
+#[derive(Debug)]
+pub struct ThreadCapabilities {
+    data: CapUserData,
+    _thread_local: PhantomData<Rc<()>>,
+}
+
 #[allow(clippy::unreadable_literal)]
 const CAPS_V3: u32 = 0x20080522;
 
-pub fn capget() -> ThreadCapabilities {
+thread_local! {
+    static THREAD_CAPABILITIES_ACQUIRED: Cell<bool> = const { Cell::new(false) };
+}
+
+#[derive(Debug)]
+pub struct ThreadCapabilitiesAlreadyAcquired;
+
+fn raw_capget() -> CapUserData {
     let hdr = CapUserHeader {
         version: CAPS_V3,
         pid: 0,
     };
-    let mut data: MaybeUninit<ThreadCapabilities> = MaybeUninit::uninit();
+    let mut data: MaybeUninit<CapUserData> = MaybeUninit::uninit();
     let r = unsafe { libc::syscall(libc::SYS_capget, &raw const hdr, &raw mut data) };
     match r {
         0 => unsafe { data.assume_init() },
         _ => panic!("capget: {}", unsafe { *libc::__errno_location() }),
     }
+}
+
+pub fn capget_or_panic() -> ThreadCapabilities {
+    ThreadCapabilities::acquire().expect("ThreadCapabilities already acquired for this thread")
 }
 
 #[derive(Debug)]
@@ -44,7 +61,7 @@ pub enum CapsetError {
     PermissionDenied,
 }
 
-pub fn capset(data: &ThreadCapabilities) -> Result<(), CapsetError> {
+fn raw_capset(data: &CapUserData) -> Result<(), CapsetError> {
     let hdr = CapUserHeader {
         version: CAPS_V3,
         pid: 0,
@@ -57,6 +74,12 @@ pub fn capset(data: &ThreadCapabilities) -> Result<(), CapsetError> {
         libc::EINVAL => Err(CapsetError::InvalidArguments),
         libc::EPERM => Err(CapsetError::PermissionDenied),
         e => panic!("unexpected error from capset: {e}"),
+    }
+}
+
+impl Drop for ThreadCapabilities {
+    fn drop(&mut self) {
+        THREAD_CAPABILITIES_ACQUIRED.set(false);
     }
 }
 
@@ -75,14 +98,29 @@ pub struct ActiveCaps<const CAPS: CapSet>(std::marker::PhantomData<*mut ()>);
 pub struct DisabledCaps<const CAPS: CapSet>(std::marker::PhantomData<*mut ()>);
 
 impl ThreadCapabilities {
+    pub fn acquire() -> Result<Self, ThreadCapabilitiesAlreadyAcquired> {
+        THREAD_CAPABILITIES_ACQUIRED.with(|acquired| {
+            if acquired.get() {
+                return Err(ThreadCapabilitiesAlreadyAcquired);
+            }
+
+            let data = raw_capget();
+            acquired.set(true);
+            Ok(Self {
+                data,
+                _thread_local: PhantomData,
+            })
+        })
+    }
+
     pub fn effective(&self) -> CapSet {
-        two_u32_to_u64_little_endian(self.effective_s1, self.effective_s0)
+        two_u32_to_u64_little_endian(self.data.effective_s1, self.data.effective_s0)
     }
     pub fn permitted(&self) -> CapSet {
-        two_u32_to_u64_little_endian(self.permitted_s1, self.permitted_s0)
+        two_u32_to_u64_little_endian(self.data.permitted_s1, self.data.permitted_s0)
     }
     pub fn inheritable(&self) -> CapSet {
-        two_u32_to_u64_little_endian(self.inheritable_s1, self.inheritable_s0)
+        two_u32_to_u64_little_endian(self.data.inheritable_s1, self.data.inheritable_s0)
     }
 
     pub fn has_all_effective(&self, caps: CapSet) -> bool {
@@ -113,18 +151,19 @@ impl ThreadCapabilities {
     where
         Func: FnOnce(&ActiveCaps<CAPS>, Args) -> Ret,
     {
-        let current_ef: u64 = u64::from(self.effective_s1) << 32 | u64::from(self.effective_s0);
-        let current_pm: u64 = u64::from(self.permitted_s1) << 32 | u64::from(self.permitted_s0);
+        let current_ef: u64 = self.effective();
+        let current_pm: u64 = self.permitted();
         let missing_ef = !current_ef & CAPS;
         let missing_pm = !current_pm & missing_ef;
         if missing_ef != 0 {
             if missing_pm != 0 {
                 return Err(CapsetError::PermissionDenied);
             }
-            self.effective_s0 |= missing_ef as u32;
-            self.effective_s1 |= (missing_ef >> 32) as u32;
-            match capset(self) {
-                Ok(_) => (),
+            let mut raised = self.data;
+            raised.effective_s0 |= missing_ef as u32;
+            raised.effective_s1 |= (missing_ef >> 32) as u32;
+            match raw_capset(&raised) {
+                Ok(_) => self.data = raised,
                 Err(CapsetError::PermissionDenied) => {
                     panic!(
                         "Somebody modified current thread's permitted capabilities behind my back"
@@ -136,9 +175,11 @@ impl ThreadCapabilities {
         let token = ActiveCaps(std::marker::PhantomData);
         let res = f(&token, args);
         if missing_ef != 0 {
-            self.effective_s0 &= !missing_ef as u32;
-            self.effective_s1 &= (!missing_ef >> 32) as u32;
-            capset(self).expect("Provided function or somebody else is supposed not to modify current thread's permitted capabilites which might make this operation not valid");
+            let mut restored = self.data;
+            restored.effective_s0 &= !missing_ef as u32;
+            restored.effective_s1 &= (!missing_ef >> 32) as u32;
+            raw_capset(&restored).expect("Provided function or somebody else is supposed not to modify current thread's permitted capabilites which might make this operation not valid");
+            self.data = restored;
         }
         Ok(res)
     }
@@ -159,19 +200,23 @@ impl ThreadCapabilities {
     where
         Func: FnOnce(&DisabledCaps<CAPS>, Args) -> Ret,
     {
-        let current_ef: u64 = u64::from(self.effective_s1) << 32 | u64::from(self.effective_s0);
+        let current_ef: u64 = self.effective();
         let present_ef = current_ef & CAPS;
         if present_ef != 0 {
-            self.effective_s0 &= !(present_ef as u32);
-            self.effective_s1 &= !((present_ef >> 32) as u32);
-            capset(self).expect(Self::LOWERING_CAPS_EXPECT);
+            let mut lowered = self.data;
+            lowered.effective_s0 &= !(present_ef as u32);
+            lowered.effective_s1 &= !((present_ef >> 32) as u32);
+            raw_capset(&lowered).expect(Self::LOWERING_CAPS_EXPECT);
+            self.data = lowered;
         }
         let token = DisabledCaps(std::marker::PhantomData);
         let res = f(&token, args);
         if present_ef != 0 {
-            self.effective_s0 |= present_ef as u32;
-            self.effective_s1 |= (present_ef >> 32) as u32;
-            capset(self).expect("Provided function or somebody else is supposed not to modify current thread's permitted capabilites which might make this operation not valid");
+            let mut restored = self.data;
+            restored.effective_s0 |= present_ef as u32;
+            restored.effective_s1 |= (present_ef >> 32) as u32;
+            raw_capset(&restored).expect("Provided function or somebody else is supposed not to modify current thread's permitted capabilites which might make this operation not valid");
+            self.data = restored;
         }
         Ok(res)
     }
@@ -180,32 +225,38 @@ impl ThreadCapabilities {
 
     /// It's better to keep effective set clear and raise capabilities for critical sections
     pub fn clear_effective(&mut self) {
-        if self.effective_s1 == 0 && self.effective_s0 == 0 {
+        if self.data.effective_s1 == 0 && self.data.effective_s0 == 0 {
             return;
         }
-        self.effective_s0 = 0;
-        self.effective_s1 = 0;
-        capset(self).expect(Self::LOWERING_CAPS_EXPECT);
+        let mut cleared = self.data;
+        cleared.effective_s0 = 0;
+        cleared.effective_s1 = 0;
+        raw_capset(&cleared).expect(Self::LOWERING_CAPS_EXPECT);
+        self.data = cleared;
     }
 
     /// Be careful once removed from permitted set they can no longer return without special
     /// circumstances.
     pub fn clear_permitted(&mut self) {
-        if self.permitted_s1 == 0 && self.permitted_s0 == 0 {
+        if self.data.permitted_s1 == 0 && self.data.permitted_s0 == 0 {
             return;
         }
-        self.permitted_s1 = 0;
-        self.permitted_s0 = 0;
-        capset(self).expect(Self::LOWERING_CAPS_EXPECT);
+        let mut cleared = self.data;
+        cleared.permitted_s1 = 0;
+        cleared.permitted_s0 = 0;
+        raw_capset(&cleared).expect(Self::LOWERING_CAPS_EXPECT);
+        self.data = cleared;
     }
 
     pub fn clear_inheritable(&mut self) {
-        if self.inheritable_s1 == 0 && self.inheritable_s0 == 0 {
+        if self.data.inheritable_s1 == 0 && self.data.inheritable_s0 == 0 {
             return;
         }
-        self.inheritable_s1 = 0;
-        self.inheritable_s0 = 0;
-        capset(self).expect(Self::LOWERING_CAPS_EXPECT);
+        let mut cleared = self.data;
+        cleared.inheritable_s1 = 0;
+        cleared.inheritable_s0 = 0;
+        raw_capset(&cleared).expect(Self::LOWERING_CAPS_EXPECT);
+        self.data = cleared;
     }
 }
 
