@@ -71,7 +71,11 @@ define_drm_ioctl!(
     /// It does validate objects
     ///
     /// # SAFETY
-    /// todo
+    /// Client must have master status
+    /// Driver must support modesetting, or EOPNOTSUP
+    /// Only supported flags are O_CLOEXEC and O_NONBLOCK, or EINVAL
+    /// Client cannot be leassed, or EINVAL
+    /// There must be space to create a new fd, or EMFILE
     mode_create_lease, CreateLease, 0xC6, WR);
 define_drm_ioctl!(
     ///
@@ -81,6 +85,7 @@ define_drm_ioctl!(
 define_drm_ioctl!(
     ///
     /// # SAFETY
+    /// Requires master status, or EACCES
     /// Driver must support MODESET, otherwise EOPNOTSUP
     /// Pad must be 0, otherwise EINVAL
     /// Provided buffer must be writable, otherwise EFAULT

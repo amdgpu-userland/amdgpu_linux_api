@@ -9,6 +9,8 @@ use crate::capabilities::ActiveCaps;
 use crate::capabilities::DisabledCaps;
 use crate::drm::driver_capabilities::Modeset;
 use crate::drm::ioctl::drm::Magic;
+use crate::drm::lease::GetLeaseError;
+use crate::drm::lease::get_lease;
 use crate::drm::verify_if_drm_fd_is_authenticated;
 use errors::*;
 
@@ -236,26 +238,29 @@ impl<Driver> PrimaryClient<Unknown, Foreign, Exclusive, Driver> {
                 Err(ForeignSetMasterError::OtherMasterAlreadySet(self))
             }
             Err(SetMasterError::LeassedClientNotAllowed) => {
-                let mut buffer = Box::new([0; 1024]);
-                let mut args = ioctl::drm::GetLease {
-                    count_objects: buffer.len().try_into().unwrap(),
-                    pad: 0,
-                    objects_ptr: buffer.as_mut_ptr(),
-                };
-                unsafe { ioctl::drm::mode_get_lease(self.file.as_raw_fd(), &mut args) }.expect(
-                    "If the driver doesn't support modesetting this client could not be a lease",
-                );
-                Err(ForeignSetMasterError::LeassedClient(PrimaryClient {
-                    file: self.file,
-                    _auth: Leased {
-                        // We will have to remember to free this memory if we learn that the lease
-                        // has been revoked - Foreign + Lease<'static>
-                        _permitted_objects: Box::leak(buffer),
-                    },
-                    _origin: PhantomData,
-                    _access: PhantomData,
-                    _driver_specific: self._driver_specific,
-                }))
+                let buffer = Box::leak(Box::new([0u32; 1024]));
+                match get_lease(self.file.as_fd(), buffer.as_mut_slice()) {
+                    Ok(buffer) => {
+                        Err(ForeignSetMasterError::LeassedClient(PrimaryClient {
+                            file: self.file,
+                            _auth: Leased {
+                                // We will have to remember to:
+                                // - zero this memory if the lease has been revoked - Foreign + Lease<'static>
+                                // - free this memory if the lease loses master status
+                                _permitted_objects: buffer,
+                            },
+                            _origin: PhantomData,
+                            _access: PhantomData,
+                            _driver_specific: self._driver_specific,
+                        }))
+                    }
+                    Err(GetLeaseError::DriverDoesntSupport) => unreachable!(
+                        "Previous error told us this is a leased object, so modesetting is supported by this driver"
+                    ),
+                    Err(GetLeaseError::LostMasterStatus) => panic!(
+                        "Lease waiting for lessor to get master status back is too complex to bother with"
+                    ),
+                }
             }
             Err(SetMasterError::RunOutOfMemory) => panic!("Out of memory"),
             Err(SetMasterError::RequiresRootPermissions) => {

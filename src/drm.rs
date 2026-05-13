@@ -8,6 +8,7 @@ pub mod auth;
 pub mod driver_capabilities;
 mod hidden;
 pub mod ioctl;
+pub mod lease;
 mod set_client_name;
 
 use hidden::open_file_check_version;
