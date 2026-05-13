@@ -81,7 +81,9 @@ define_drm_ioctl!(
 define_drm_ioctl!(
     ///
     /// # SAFETY
-    /// todo
+    /// Driver must support MODESET, otherwise EOPNOTSUP
+    /// Pad must be 0, otherwise EINVAL
+    /// Provided buffer must be writable, otherwise EFAULT
     mode_get_lease, GetLease, 0xC8, WR);
 define_drm_ioctl!(
     ///

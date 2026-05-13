@@ -71,6 +71,9 @@ pub fn has_all_caps(current_caps: CapSet, desired_caps: CapSet) -> bool {
 /// Token "proving" the **current** thread has specified capabilities in effective set
 pub struct ActiveCaps<const CAPS: CapSet>(std::marker::PhantomData<*mut ()>);
 
+/// Token "proving" the **current** thread does not have specified capabilities in effective set
+pub struct DisabledCaps<const CAPS: CapSet>(std::marker::PhantomData<*mut ()>);
+
 impl ThreadCapabilities {
     pub fn effective(&self) -> CapSet {
         two_u32_to_u64_little_endian(self.effective_s1, self.effective_s0)
@@ -98,6 +101,10 @@ impl ThreadCapabilities {
     /// specified capabilities in effective set.
     ///
     /// Lowers down capabilities it had to raise after the function.
+    ///
+    /// Provided function needs to be extra careful with further modyfing
+    /// current thread's capability set as it may result in unexpected error
+    /// during restoring previous capabilities.
     pub fn with_effective<const CAPS: CapSet, Args, Func, Ret>(
         &mut self,
         f: Func,
@@ -116,14 +123,55 @@ impl ThreadCapabilities {
             }
             self.effective_s0 |= missing_ef as u32;
             self.effective_s1 |= (missing_ef >> 32) as u32;
-            capset(self)?;
+            match capset(self) {
+                Ok(_) => (),
+                Err(CapsetError::PermissionDenied) => {
+                    panic!(
+                        "Somebody modified current thread's permitted capabilities behind my back"
+                    )
+                }
+                Err(e) => return Err(e),
+            }
         }
         let token = ActiveCaps(std::marker::PhantomData);
         let res = f(&token, args);
         if missing_ef != 0 {
             self.effective_s0 &= !missing_ef as u32;
             self.effective_s1 &= (!missing_ef >> 32) as u32;
-            capset(self)?;
+            capset(self).expect("Provided function or somebody else is supposed not to modify current thread's permitted capabilites which might make this operation not valid");
+        }
+        Ok(res)
+    }
+
+    /// Executes a provided function with provided arguments with all
+    /// specified capabilities removed from effective set.
+    ///
+    /// Restores capabilities it had to lower after the function.
+    ///
+    /// Provided function needs to be extra careful with further modyfing
+    /// current thread's capability set as it may result in unexpected error
+    /// during restoring previous capabilities.
+    pub fn without_effective<const CAPS: CapSet, Args, Func, Ret>(
+        &mut self,
+        f: Func,
+        args: Args,
+    ) -> Result<Ret, CapsetError>
+    where
+        Func: FnOnce(&DisabledCaps<CAPS>, Args) -> Ret,
+    {
+        let current_ef: u64 = u64::from(self.effective_s1) << 32 | u64::from(self.effective_s0);
+        let present_ef = current_ef & CAPS;
+        if present_ef != 0 {
+            self.effective_s0 &= !(present_ef as u32);
+            self.effective_s1 &= !((present_ef >> 32) as u32);
+            capset(self).expect(Self::LOWERING_CAPS_EXPECT);
+        }
+        let token = DisabledCaps(std::marker::PhantomData);
+        let res = f(&token, args);
+        if present_ef != 0 {
+            self.effective_s0 |= present_ef as u32;
+            self.effective_s1 |= (present_ef >> 32) as u32;
+            capset(self).expect("Provided function or somebody else is supposed not to modify current thread's permitted capabilites which might make this operation not valid");
         }
         Ok(res)
     }

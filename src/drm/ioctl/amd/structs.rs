@@ -761,7 +761,7 @@ pub struct InfoMemory {
 }
 
 #[repr(u32)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InfoQuery {
     AccelWorking = 0,
     CrtcFromId = 1,

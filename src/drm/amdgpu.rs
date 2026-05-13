@@ -1,13 +1,6 @@
 #[cfg(feature = "async")]
-use std::{
-    fs::OpenOptions,
-    io::{Error, ErrorKind},
-    os::fd::OwnedFd,
-};
-use std::{
-    marker::PhantomData,
-    os::{fd::FromRawFd, unix::fs::OpenOptionsExt},
-};
+use std::{fs::OpenOptions, os::fd::OwnedFd};
+use std::{marker::PhantomData, os::unix::fs::OpenOptionsExt};
 
 #[cfg(feature = "async")]
 use tokio::io::{Interest, unix::AsyncFd};
@@ -17,6 +10,10 @@ use crate::{
     drm::{
         PrimaryClient,
         auth::{Authenticated, Exclusive, Local, Unknown},
+        ioctl::{
+            self,
+            amd::ids_flags::{self, IdsFlags},
+        },
     },
 };
 
@@ -53,10 +50,7 @@ use crate::{
 /// these semaphore allocation is managed via a giant bitmap with 32768 available slots
 /// we can get the index via amdgpu_userq_wait_ioctl - first call it with num_fences = 0, to get
 /// how many there are, and then again with enough memory to get the VA and seqno back
-pub struct Amdgpu<Bar, Mcbp> {
-    _bar: PhantomData<Bar>,
-    mcbp: Mcbp,
-}
+pub struct Amdgpu {}
 
 /// An actual device handled by the amdgpu driver, from the driver's point of view
 pub struct Gpu<ReBAR, Apu, Mcbp, Tmz, CoordTruncMode, Virtualization, GangSubmission> {
@@ -69,44 +63,137 @@ pub struct Gpu<ReBAR, Apu, Mcbp, Tmz, CoordTruncMode, Virtualization, GangSubmis
     _allow_gang_submission: PhantomData<GangSubmission>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VirtualizationMode {
+    SriovPhysicalFunction,
+    SriovVirtualFunction,
+    PciPassthrough,
+    Unknown(u64),
+}
+
+pub struct LargeBar;
+
+pub struct Apu;
+pub struct Mcbp;
+pub struct Tmz;
+pub struct ConformantTruncCoord;
+pub struct GangSubmit;
+
+pub struct SriovPhysicalFunction;
+pub struct SriovVirtualFunction;
+pub struct PciPassthrough;
+
+pub fn has_large_bar(info: &ioctl::amd::InfoMemory) -> bool {
+    info.cpu_accessible_vram.total_heap_size == info.vram.total_heap_size
+}
+pub fn is_apu(info: &ioctl::amd::InfoDevice) -> bool {
+    info.ids_flags & ioctl::amd::ids_flags::FUSION != 0
+}
+pub fn has_mcbp(info: &ioctl::amd::InfoDevice) -> bool {
+    info.ids_flags & ioctl::amd::ids_flags::PREEMPTION != 0
+}
+pub fn has_tmz(info: &ioctl::amd::InfoDevice) -> bool {
+    info.ids_flags & ioctl::amd::ids_flags::TMZ != 0
+}
+pub fn has_conformant_truncation_mode(info: &ioctl::amd::InfoDevice) -> bool {
+    info.ids_flags & ioctl::amd::ids_flags::CONFORMANT_TRUNC_COORD != 0
+}
+pub fn has_gang_submit(info: &ioctl::amd::InfoDevice) -> bool {
+    info.ids_flags & ioctl::amd::ids_flags::GAMG_SUBMIT != 0
+}
+pub fn has_all_ids_flag(
+    info: &ioctl::amd::InfoDevice,
+    flags: ioctl::amd::ids_flags::IdsFlags,
+) -> bool {
+    info.ids_flags & flags == flags
+}
+
+pub fn virtualization_mode(info: &ioctl::amd::InfoDevice) -> VirtualizationMode {
+    match (info.ids_flags & ioctl::amd::ids_flags::MODE_MASK) >> ioctl::amd::ids_flags::MODE_SHIFT {
+        0 => VirtualizationMode::SriovPhysicalFunction,
+        1 => VirtualizationMode::SriovVirtualFunction,
+        2 => VirtualizationMode::PciPassthrough,
+        mode => VirtualizationMode::Unknown(mode),
+    }
+}
+
 // Drm doesn't have a particular version as it's more like scaffolding for other drivers, that may
 // chose to change things up
 
 pub fn try_open_primary_with_cap_sys_admin(
     num: i32,
     token: &ActiveCaps<CAP_SYS_ADMIN>,
-) -> PrimaryClient<Authenticated, Local, Exclusive, Amdgpu<Unknown, Unknown>> {
-    // O_EXCL not allowed -> EBUSY
-    // if device is not (turned_on or dynamically_turned_off) EINVAL
-    match std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .custom_flags(0)
-        .open(format! {"/dev/dri/card{num}"})
-    {
-        Ok(_) => todo!(),
-        Err(_) => todo!(),
-    }
+) -> PrimaryClient<Authenticated, Local, Exclusive, Amdgpu> {
+    let fd = try_open_blocking(num).unwrap();
     let _ = token;
+    PrimaryClient {
+        file: fd,
+        _auth: Authenticated,
+        _origin: PhantomData,
+        _access: PhantomData,
+        _driver_specific: Amdgpu {},
+    }
 }
 
 pub unsafe fn try_open_primary_with_cap_sys_admin_unchecked(
     num: i32,
-) -> PrimaryClient<Authenticated, Local, Exclusive, Amdgpu<Unknown, Unknown>> {
+) -> PrimaryClient<Authenticated, Local, Exclusive, Amdgpu> {
+    let _ = num;
     todo!()
 }
 
-pub fn try_open_primary(
-    num: i32,
-) -> PrimaryClient<Unknown, Local, Exclusive, Amdgpu<Unknown, Unknown>> {
+pub fn try_open_primary(num: i32) -> PrimaryClient<Unknown, Local, Exclusive, Amdgpu> {
+    let _ = num;
     todo!()
 }
 
 #[cfg(all(target_arch = "sparc", not(target_feature = "v9")))]
 compile_error!("Drm doesn't accept sparc before v9");
 
+#[derive(Debug)]
+pub enum OpenError {
+    DeviceRemoved,
+    DevicePoweredOff,
+    OutOfMemory,
+    DeviceDisabledDueToRAS,
+    InvalidPartition,
+    Other(std::io::Error),
+}
+
+pub fn try_open_blocking(num: i32) -> Result<OwnedFd, OpenError> {
+    match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .custom_flags(libc::O_CLOEXEC)
+        .open(format! {"/dev/dri/card{num}"})
+    {
+        Err(e) => match e.raw_os_error().unwrap_or_default() {
+            // Unlucky, the device is being removed
+            libc::ENODEV => Err(OpenError::DeviceRemoved),
+            // Probably the device is powered off
+            //
+            // Cpu is valid (not sparc before v9)
+            //
+            // Amdgpu driver defines FOP_UNSIGNED_OFFSET
+            libc::EINVAL => Err(OpenError::DevicePoweredOff),
+            // Unlucky to run out of memory
+            //
+            // Can happen in drm and amdgpu specific part
+            libc::ENOMEM => Err(OpenError::OutOfMemory),
+            // Amdgpu specific, ras interrupt triggered and device disabled
+            libc::EHWPOISON => Err(OpenError::DeviceDisabledDueToRAS),
+            // Amdgpu specific, if gpu is partitioned and a partition is not valid, but I don't
+            // know why it could be invalid and the file to still be there
+            libc::ENOENT => Err(OpenError::InvalidPartition),
+            // either not expected or non drm / driver specific so fall back to regular file errors
+            _ => Err(OpenError::Other(e)),
+        },
+        Ok(fd) => Ok(OwnedFd::from(fd)),
+    }
+}
+
 #[cfg(feature = "async")]
-pub fn try_open_nonblocking(num: i32) -> tokio::io::unix::AsyncFd<OwnedFd> {
+pub fn try_open_nonblocking(num: i32) -> Result<tokio::io::unix::AsyncFd<OwnedFd>, OpenError> {
     match OpenOptions::new()
         .read(true)
         .write(true)
@@ -115,27 +202,29 @@ pub fn try_open_nonblocking(num: i32) -> tokio::io::unix::AsyncFd<OwnedFd> {
     {
         Err(e) => match e.raw_os_error().unwrap_or_default() {
             // Unlucky, the device is being removed
-            libc::ENODEV => todo!(),
+            libc::ENODEV => Err(OpenError::DeviceRemoved),
             // Probably the device is powered off
             //
             // Cpu is valid (not sparc before v9)
             //
             // Amdgpu driver defines FOP_UNSIGNED_OFFSET
-            libc::EINVAL => todo!(),
+            libc::EINVAL => Err(OpenError::DevicePoweredOff),
             // Unlucky to run out of memory
             //
             // Can happen in drm and amdgpu specific part
-            libc::ENOMEM => todo!(),
+            libc::ENOMEM => Err(OpenError::OutOfMemory),
             // Amdgpu specific, ras interrupt triggered and device disabled
-            libc::EHWPOISON => todo!(),
+            libc::EHWPOISON => Err(OpenError::DeviceDisabledDueToRAS),
             // Amdgpu specific, if gpu is partitioned and a partition is not valid, but I don't
             // know why it could be invalid and the file to still be there
-            libc::ENOENT => todo!(),
+            libc::ENOENT => Err(OpenError::InvalidPartition),
             // either not expected or non drm / driver specific so fall back to regular file errors
-            _ => todo!(),
+            _ => Err(OpenError::Other(e)),
         },
-        Ok(fd) => AsyncFd::with_interest(OwnedFd::from(fd), Interest::READABLE)
-            .expect("Should be readable in drm subsystem"),
+        Ok(fd) => Ok(
+            AsyncFd::with_interest(OwnedFd::from(fd), Interest::READABLE)
+                .expect("Should be readable in drm subsystem"),
+        ),
     }
 }
 

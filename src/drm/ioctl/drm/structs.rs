@@ -1,4 +1,4 @@
-use std::os::fd::{OwnedFd, RawFd};
+use std::os::fd::RawFd;
 
 use crate::drm::GemHandle;
 

@@ -1,3 +1,4 @@
+use std::any::type_name_of_val;
 use std::marker::PhantomData;
 use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
@@ -5,6 +6,8 @@ use std::os::fd::BorrowedFd;
 use std::os::fd::FromRawFd;
 use std::os::fd::OwnedFd;
 
+use crate::capabilities::ActiveCaps;
+use crate::capabilities::DisabledCaps;
 use crate::drm::driver_capabilities::Modeset;
 use crate::drm::ioctl::drm::Magic;
 use crate::drm::verify_if_drm_fd_is_authenticated;
@@ -12,6 +15,8 @@ use errors::*;
 
 use super::PrimaryClient;
 use super::ioctl;
+
+use crate::capabilities::CAP_SYS_ADMIN;
 
 pub mod errors {
     #[derive(Debug)]
@@ -54,7 +59,7 @@ pub mod errors {
 /// Created by this thread group
 pub struct Local;
 
-/// Created outside current thread group, but we have sole ownership of it now
+/// Created outside current thread group
 pub struct Foreign;
 
 /// Sole access to underlying drm object, no dupplicates exist
@@ -76,7 +81,7 @@ pub struct MasterWithLeasses {
     _leasses: Vec<()>,
 }
 
-/// Authenticated probably by a master via a magic value (DRM_IOCTL_AUTH_MAGIC)
+/// Authenticated **probably** by a master via a magic value (DRM_IOCTL_AUTH_MAGIC)
 ///
 /// If has CAP_SYS_ADMIN at creation, it is automatically set
 pub struct Authenticated;
@@ -138,10 +143,17 @@ fn set_master(fd: BorrowedFd<'_>) -> Result<(), SetMasterError> {
     Ok(())
 }
 
-impl<Origin, Driver> PrimaryClient<Unknown, Origin, Exclusive, Driver> {
-    pub fn set_master(
+pub enum RootlessLocalSetMasterError<Driver> {
+    Authenticated(PrimaryClient<Authenticated, Local, Exclusive, Driver>),
+    Regular(PrimaryClient<Regular, Local, Exclusive, Driver>),
+    OtherMasterAlreadySet(PrimaryClient<Unknown, Local, Exclusive, Driver>),
+}
+
+impl<Driver> PrimaryClient<Unknown, Local, Exclusive, Driver> {
+    pub fn set_master_rootless(
         self,
-    ) -> Result<PrimaryClient<Master, Origin, Exclusive, Driver>, (Self, RegularSetMasterError)>
+        _token: &DisabledCaps<CAP_SYS_ADMIN>,
+    ) -> Result<PrimaryClient<Master, Local, Exclusive, Driver>, RootlessLocalSetMasterError<Driver>>
     {
         match set_master(self.file.as_fd()) {
             Ok(_) => Ok(PrimaryClient {
@@ -152,39 +164,104 @@ impl<Origin, Driver> PrimaryClient<Unknown, Origin, Exclusive, Driver> {
                 _driver_specific: self._driver_specific,
             }),
             Err(SetMasterError::OtherMasterAlreadySet) => {
-                Err((self, RegularSetMasterError::OtherMasterAlreadySet))
+                Err(RootlessLocalSetMasterError::OtherMasterAlreadySet(self))
             }
             Err(SetMasterError::LeassedClientNotAllowed) => {
-                panic!("Logic error: this drm client is not supposed to be a leasse")
+                panic!(
+                    "Logic error: since this client is created locally and has unknown auth it cannot be a leasse"
+                )
+            }
+            Err(SetMasterError::RunOutOfMemory) => panic!("Out of memory"),
+            Err(SetMasterError::RequiresRootPermissions) => match self.verify_authenticated() {
+                Ok(res) => Err(RootlessLocalSetMasterError::Authenticated(res)),
+                Err(res) => Err(RootlessLocalSetMasterError::Regular(PrimaryClient {
+                    file: res.file,
+                    _auth: Regular,
+                    _origin: PhantomData,
+                    _access: PhantomData,
+                    _driver_specific: res._driver_specific,
+                })),
+            },
+        }
+    }
+
+    pub fn set_master(
+        self,
+        _token: &ActiveCaps<CAP_SYS_ADMIN>,
+    ) -> Result<PrimaryClient<Master, Local, Exclusive, Driver>, (Self, OtherMasterAlreadySet)>
+    {
+        match set_master(self.file.as_fd()) {
+            Ok(_) => Ok(PrimaryClient {
+                _auth: Master,
+                _origin: PhantomData,
+                _access: PhantomData,
+                file: self.file,
+                _driver_specific: self._driver_specific,
+            }),
+            Err(SetMasterError::OtherMasterAlreadySet) => Err((self, OtherMasterAlreadySet)),
+            Err(SetMasterError::LeassedClientNotAllowed) => {
+                panic!(
+                    "Logic error: since this client is created locally and has unknown auth it cannot be a leasse"
+                )
             }
             Err(SetMasterError::RunOutOfMemory) => panic!("Out of memory"),
             Err(SetMasterError::RequiresRootPermissions) => {
-                Err((self, RegularSetMasterError::RootPermissionsRequired))
+                panic!("This thread is supposed to have CAP_SYS_ADMIN via token")
             }
         }
     }
 }
 
-impl<Auth: ProbablyNotAuthenticated, Origin, Driver>
-    PrimaryClient<Auth, Origin, Exclusive, Driver>
-{
-    /// After authenticating with master use `verify_authenticated` to cache state appropriately
-    pub fn get_magic(&self) -> Magic {
-        let mut args = ioctl::drm::Auth::default();
-        match unsafe { ioctl::drm::get_magic(self.file.as_raw_fd(), &mut args) } {
-            Ok(_) => args.magic,
-            Err(e) => panic!("get_magic: {e}"),
-        }
-    }
+pub enum ForeignSetMasterError<Driver> {
+    /// Because it comes from outside this program, we cannot determine for how long the lease is
+    /// going to last. In optimistic case for the whole duration of this program so 'static.
+    LeassedClient(PrimaryClient<Leased<'static>, Foreign, Exclusive, Driver>),
+    OtherMasterAlreadySet(PrimaryClient<Unknown, Foreign, Exclusive, Driver>),
 }
 
-impl<Auth: PrimaryMaster, Origin, Driver> PrimaryClient<Auth, Origin, Exclusive, Driver> {
-    pub fn auth_magic(&self, magic: Magic) -> Result<(), ClientDoesntExistOrAlreadyAuthenticated> {
-        let mut args = ioctl::drm::Auth { magic };
-        match unsafe { ioctl::drm::auth_magic(self.file.as_raw_fd(), &mut args) } {
-            Ok(_) => Ok(()),
-            Err(libc::EINVAL) => Err(ClientDoesntExistOrAlreadyAuthenticated),
-            Err(e) => panic!("auth_magic: {e}"),
+impl<Driver> PrimaryClient<Unknown, Foreign, Exclusive, Driver> {
+    pub fn set_master(
+        self,
+        _token: &ActiveCaps<CAP_SYS_ADMIN>,
+    ) -> Result<PrimaryClient<Master, Local, Exclusive, Driver>, ForeignSetMasterError<Driver>>
+    {
+        match set_master(self.file.as_fd()) {
+            Ok(_) => Ok(PrimaryClient {
+                _auth: Master,
+                _origin: PhantomData,
+                _access: PhantomData,
+                file: self.file,
+                _driver_specific: self._driver_specific,
+            }),
+            Err(SetMasterError::OtherMasterAlreadySet) => {
+                Err(ForeignSetMasterError::OtherMasterAlreadySet(self))
+            }
+            Err(SetMasterError::LeassedClientNotAllowed) => {
+                let mut buffer = Box::new([0; 1024]);
+                let mut args = ioctl::drm::GetLease {
+                    count_objects: buffer.len().try_into().unwrap(),
+                    pad: 0,
+                    objects_ptr: buffer.as_mut_ptr(),
+                };
+                unsafe { ioctl::drm::mode_get_lease(self.file.as_raw_fd(), &mut args) }.expect(
+                    "If the driver doesn't support modesetting this client could not be a lease",
+                );
+                Err(ForeignSetMasterError::LeassedClient(PrimaryClient {
+                    file: self.file,
+                    _auth: Leased {
+                        // We will have to remember to free this memory if we learn that the lease
+                        // has been revoked - Foreign + Lease<'static>
+                        _permitted_objects: Box::leak(buffer),
+                    },
+                    _origin: PhantomData,
+                    _access: PhantomData,
+                    _driver_specific: self._driver_specific,
+                }))
+            }
+            Err(SetMasterError::RunOutOfMemory) => panic!("Out of memory"),
+            Err(SetMasterError::RequiresRootPermissions) => {
+                panic!("This thread is supposed to have CAP_SYS_ADMIN via token")
+            }
         }
     }
 }
@@ -208,42 +285,9 @@ impl<Driver> PrimaryClient<WasMaster, Local, Exclusive, Driver> {
             }
             Err(SetMasterError::RunOutOfMemory) => panic!("Out of memory"),
             Err(SetMasterError::RequiresRootPermissions) => panic!(
-                "Logic error: this drm client is supposed to be created by the current thread"
+                "Logic error: this drm client is supposed to be created by the current thread and therefore not require root"
             ),
         }
-    }
-}
-
-impl<O, A, D> PrimaryClient<Unknown, O, A, D> {
-    /// If you can expect this client to be already authenticated you can verify it in only one
-    /// syscall
-    ///
-    /// A primary client can be automatically master, which automatically sets authenticated status
-    /// If you can expect only need authenticated status use
-    /// this instead of going through master
-    pub fn verify_authenticated(self) -> Result<PrimaryClient<Authenticated, O, A, D>, Self> {
-        let fd = self.file.as_raw_fd();
-        if !verify_if_drm_fd_is_authenticated(fd) {
-            return Err(self);
-        }
-        Ok(PrimaryClient {
-            file: self.file,
-            _driver_specific: self._driver_specific,
-            _auth: Authenticated,
-            _origin: PhantomData,
-            _access: PhantomData,
-        })
-    }
-}
-
-fn drop_master(fd: &mut OwnedFd) -> Result<(), DropMasterError> {
-    match unsafe { ioctl::drm::drop_master(fd.as_raw_fd()) } {
-        Ok(r) => Ok(r),
-        Err(libc::EACCES) => Err(DropMasterError::RootAccessRequired),
-        Err(libc::EINVAL) => {
-            Err(DropMasterError::NotCurrentMasterOrThereIsNoMasterOrItIsALeassedClient)
-        }
-        Err(e) => panic!("Unexpected drop_master: {e}"),
     }
 }
 
@@ -280,27 +324,86 @@ impl<Driver> PrimaryClient<Master, Foreign, Exclusive, Driver> {
     #[doc = include_str!("./auth_master_warning.md")]
     pub fn drop_master(
         mut self,
-    ) -> Result<PrimaryClient<WasMaster, Foreign, Exclusive, Driver>, (Self, RootAccessRequired)>
-    {
+        _token: &ActiveCaps<CAP_SYS_ADMIN>,
+    ) -> PrimaryClient<WasMaster, Foreign, Exclusive, Driver> {
         match drop_master(&mut self.file) {
-            Ok(_) => Ok(PrimaryClient {
+            Ok(_) => PrimaryClient {
                 file: self.file,
                 _driver_specific: self._driver_specific,
                 _auth: WasMaster,
                 _origin: PhantomData,
                 _access: PhantomData,
-            }),
-            Err(DropMasterError::RootAccessRequired) => Err((self, RootAccessRequired)),
+            },
+            Err(DropMasterError::RootAccessRequired) => {
+                panic!("We are supposed to have root access, via token");
+            }
             Err(DropMasterError::NotCurrentMasterOrThereIsNoMasterOrItIsALeassedClient) => {
-                Ok(PrimaryClient {
+                PrimaryClient {
                     file: self.file,
                     _driver_specific: self._driver_specific,
                     _auth: WasMaster,
                     _origin: PhantomData,
                     _access: PhantomData,
-                })
+                }
             }
         }
+    }
+}
+
+impl<O, A, D> PrimaryClient<Unknown, O, A, D> {
+    /// If you can expect this client to be already authenticated you can verify it in only one
+    /// syscall, but it doesn't tell you how you got there.
+    ///
+    /// A primary client can be automatically master, which automatically sets authenticated status
+    /// If you can expect only need authenticated status use
+    /// this instead of going through master
+    pub fn verify_authenticated(self) -> Result<PrimaryClient<Authenticated, O, A, D>, Self> {
+        let fd = self.file.as_raw_fd();
+        if !verify_if_drm_fd_is_authenticated(fd) {
+            return Err(self);
+        }
+        Ok(PrimaryClient {
+            file: self.file,
+            _driver_specific: self._driver_specific,
+            _auth: Authenticated,
+            _origin: PhantomData,
+            _access: PhantomData,
+        })
+    }
+}
+
+impl<Auth: ProbablyNotAuthenticated, Origin, Driver>
+    PrimaryClient<Auth, Origin, Exclusive, Driver>
+{
+    /// After authenticating with master use `verify_authenticated` to cache state appropriately
+    pub fn get_magic(&self) -> Magic {
+        let mut args = ioctl::drm::Auth::default();
+        match unsafe { ioctl::drm::get_magic(self.file.as_raw_fd(), &mut args) } {
+            Ok(_) => args.magic,
+            Err(e) => panic!("get_magic: {e}"),
+        }
+    }
+}
+
+impl<Auth: PrimaryMaster, Origin, Driver> PrimaryClient<Auth, Origin, Exclusive, Driver> {
+    pub fn auth_magic(&self, magic: Magic) -> Result<(), ClientDoesntExistOrAlreadyAuthenticated> {
+        let mut args = ioctl::drm::Auth { magic };
+        match unsafe { ioctl::drm::auth_magic(self.file.as_raw_fd(), &mut args) } {
+            Ok(_) => Ok(()),
+            Err(libc::EINVAL) => Err(ClientDoesntExistOrAlreadyAuthenticated),
+            Err(e) => panic!("auth_magic: {e}"),
+        }
+    }
+}
+
+fn drop_master(fd: &mut OwnedFd) -> Result<(), DropMasterError> {
+    match unsafe { ioctl::drm::drop_master(fd.as_raw_fd()) } {
+        Ok(r) => Ok(r),
+        Err(libc::EACCES) => Err(DropMasterError::RootAccessRequired),
+        Err(libc::EINVAL) => {
+            Err(DropMasterError::NotCurrentMasterOrThereIsNoMasterOrItIsALeassedClient)
+        }
+        Err(e) => panic!("Unexpected drop_master: {e}"),
     }
 }
 

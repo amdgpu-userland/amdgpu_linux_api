@@ -45,7 +45,12 @@ pub unsafe trait DrmRenderFile: DrmFile {}
 /// Must be a drm file handled by amdgpu driver
 pub unsafe trait AmdgpuDrmFile: DrmFile {}
 
-pub struct PrimaryClient<Auth, Origin, Access, Driver> {
+pub struct PrimaryClient<
+    Auth = auth::Unknown,
+    Origin = auth::Local,
+    Access = auth::Exclusive,
+    Driver = amdgpu::Amdgpu,
+> {
     file: OwnedFd,
     // Cannot be PhantomData because Leassed client has restricted permissions to specific objects
     _auth: Auth,
@@ -59,31 +64,6 @@ pub struct RenderClient<Driver> {
     _driver_specific: Driver,
 }
 
-pub struct AmdgpuDrmRender3_64 {
-    fd: OwnedFd,
-}
-unsafe impl AmdgpuDrmFile for AmdgpuDrmRender3_64 {}
-unsafe impl DrmRenderFile for AmdgpuDrmRender3_64 {}
-unsafe impl DrmFile for AmdgpuDrmRender3_64 {}
-
-impl AmdgpuDrmRender3_64 {
-    pub fn open(number: i32) -> Result<Self, OpenError> {
-        Ok(Self {
-            fd: open_file_check_version(format!("/dev/dri/renderD{number}"), 3, 64)?,
-        })
-    }
-}
-
-impl AsFd for AmdgpuDrmRender3_64 {
-    fn as_fd(&self) -> std::os::unix::prelude::BorrowedFd<'_> {
-        self.fd.as_fd()
-    }
-}
-
-pub struct AmdgpuDrmPrimary3_64 {
-    fd: OwnedFd,
-}
-
 #[derive(Debug)]
 pub enum OpenError {
     OpeningFile(std::io::Error),
@@ -91,24 +71,6 @@ pub enum OpenError {
     DifferentDriverFromAmdgpu,
     Unexpected(libc::c_int),
 }
-
-impl AmdgpuDrmPrimary3_64 {
-    pub fn open(num: i32) -> Result<Self, OpenError> {
-        Ok(Self {
-            fd: open_file_check_version(format!("/dev/dri/card{num}"), 3, 64)?,
-        })
-    }
-}
-
-impl AsFd for AmdgpuDrmPrimary3_64 {
-    fn as_fd(&self) -> std::os::unix::prelude::BorrowedFd<'_> {
-        self.fd.as_fd()
-    }
-}
-
-unsafe impl DrmFile for AmdgpuDrmPrimary3_64 {}
-unsafe impl DrmPrimaryFile for AmdgpuDrmPrimary3_64 {}
-unsafe impl AmdgpuDrmFile for AmdgpuDrmPrimary3_64 {}
 
 /// Creating GEM objects
 ///
@@ -141,7 +103,5 @@ pub trait AmdgpuGemCreate: AmdgpuDrmFile {
     fn gem_create_oa() {}
     fn gem_create_doorbell() {}
 }
-
-impl AmdgpuGemCreate for AmdgpuDrmRender3_64 {}
 
 pub trait AmdgpuGemMetadata: AmdgpuDrmFile {}
