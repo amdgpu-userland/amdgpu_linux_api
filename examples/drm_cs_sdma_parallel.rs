@@ -1,6 +1,8 @@
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::{
     drm::{
-        AmdgpuDrmRender3_64, GemHandle,
+        GemHandle,
         ioctl::{
             self,
             amd::{
@@ -189,7 +191,7 @@ fn wait_cs(fd: RawFd, ctx_id: CtxId, cs_handle: u64, ip_instance: u32, ring: u32
 }
 
 fn main() {
-    let drm_file = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm_file = RawRenderNode::open(128).unwrap();
     let fd = drm_file.as_fd().as_raw_fd();
 
     let rings = get_sdma_rings(fd);

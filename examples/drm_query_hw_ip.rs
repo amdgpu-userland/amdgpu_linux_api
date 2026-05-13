@@ -1,11 +1,13 @@
-use amdgpu_linux_api::drm::{AmdgpuDrmRender3_64, ioctl};
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
+use amdgpu_linux_api::drm::{ioctl};
 use std::{
     mem::MaybeUninit,
     os::fd::{AsFd, AsRawFd},
 };
 
 fn main() {
-    let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm = RawRenderNode::open(128).unwrap();
     let fd = drm.as_fd();
     let mut info = ioctl::amd::InfoHwIp::default();
     let mut args = ioctl::amd::Info {

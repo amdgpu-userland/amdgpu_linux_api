@@ -28,7 +28,7 @@ fn main() {
         query: ioctl::amd::InfoQuery::Memory,
         quick_info: MaybeUninit::uninit(),
     };
-    let res = unsafe { ioctl::amd::info(fd.as_raw_fd(), &mut args) }.unwrap();
+    let _ = unsafe { ioctl::amd::info(fd.as_raw_fd(), &mut args) }.unwrap();
     let mem_info = unsafe { mem_info.assume_init() };
     println!("{mem_info:#?}");
 
@@ -52,10 +52,11 @@ fn main() {
         "Trunc Coord Conformant Mode: {}",
         dev_info.ids_flags & ioctl::amd::ids_flags::CONFORMANT_TRUNC_COORD != 0
     );
-    println!("Virt Mode: {:?}", unsafe {
-        ((dev_info.ids_flags >> ioctl::amd::ids_flags::MODE_SHIFT)
-            & ioctl::amd::ids_flags::MODE_MASK)
-    });
+    println!(
+        "Virt Mode: {:?}",
+        (dev_info.ids_flags >> ioctl::amd::ids_flags::MODE_SHIFT)
+            & ioctl::amd::ids_flags::MODE_MASK
+    );
     println!(
         "IsLargeBar: {}",
         mem_info.cpu_accessible_vram.total_heap_size == mem_info.vram.total_heap_size

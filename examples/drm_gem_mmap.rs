@@ -1,6 +1,7 @@
 #![feature(ptr_cast_array)]
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::drm::{
-    AmdgpuDrmRender3_64,
     ioctl::{
         self,
         amd::{GemCreateIn, GemMmapIn, gem_flags},
@@ -10,7 +11,7 @@ use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;
 
 fn main() {
-    let drm_file = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm_file = RawRenderNode::open(128).unwrap();
     let fd = drm_file.as_fd().as_raw_fd();
 
     const GEM_SIZE: usize = 0x1_000;

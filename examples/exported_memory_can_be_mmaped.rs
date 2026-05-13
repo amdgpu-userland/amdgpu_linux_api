@@ -1,3 +1,5 @@
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::drm;
 use amdgpu_linux_api::drm::ioctl::amd::*;
 use amdgpu_linux_api::drm::ioctl::drm::*;
@@ -67,7 +69,7 @@ fn main() -> std::io::Result<()> {
     if args.len() == 1 {
         let kfd = Kfd1_18::open().unwrap();
         let devs = kfd.all_apertures().unwrap();
-        let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+        let drm = RawRenderNode::open(128).unwrap();
         let kfd = match kfd.acquire_vm(&devs[0], &drm) {
             AcquireVmResult::Ok(x) => x,
             _ => panic!(),
@@ -136,7 +138,7 @@ fn main() -> std::io::Result<()> {
             );
             println!("[Child] File descriptor: {}", shared_file.as_raw_fd());
 
-            let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+            let drm = RawRenderNode::open(128).unwrap();
             let mut args = drm::ioctl::drm::PrimeHandle {
                 handle: 0,
                 flags: libc::O_RDWR as u32,

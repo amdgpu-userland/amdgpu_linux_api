@@ -10,10 +10,7 @@ use crate::{
     drm::{
         PrimaryClient,
         auth::{Authenticated, Exclusive, Local, Unknown},
-        ioctl::{
-            self,
-            amd::ids_flags::{self, IdsFlags},
-        },
+        ioctl::{self},
     },
 };
 

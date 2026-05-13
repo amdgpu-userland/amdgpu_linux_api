@@ -1,9 +1,11 @@
+#[path = "common/helpers.rs"] mod helpers;
 use std::os::fd::{AsFd, AsRawFd};
 
-use amdgpu_linux_api::drm::{AmdgpuDrmPrimary3_64, ioctl};
+use helpers::RawPrimaryNode;
+use amdgpu_linux_api::drm::{ioctl};
 
 fn main() {
-    let drm = AmdgpuDrmPrimary3_64::open(1).unwrap();
+    let drm = RawPrimaryNode::open(1).unwrap();
 
     println!("Before playing with master ioctls, hit enter to continue");
     let _ = std::io::stdin().read_line(&mut String::new());

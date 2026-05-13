@@ -1,4 +1,3 @@
-use std::any::type_name_of_val;
 use std::marker::PhantomData;
 use std::os::fd::AsFd;
 use std::os::fd::AsRawFd;

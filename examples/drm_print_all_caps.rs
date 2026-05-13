@@ -1,9 +1,11 @@
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::drm::driver_capabilities::*;
-use amdgpu_linux_api::drm::{AmdgpuDrmPrimary3_64, AmdgpuDrmRender3_64, ioctl};
+use amdgpu_linux_api::drm::{ioctl};
 use std::os::fd::{AsFd, AsRawFd};
 
 fn main() {
-    let drm_primary = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm_primary = RawRenderNode::open(128).unwrap();
     let fd = drm_primary.as_fd().as_raw_fd();
 
     let caps = [

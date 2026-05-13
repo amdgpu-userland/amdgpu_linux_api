@@ -1,6 +1,8 @@
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::{
     GPU_PAGE_SIZE,
-    drm::{AmdgpuDrmRender3_64, DrmFile},
+    drm::{DrmFile},
     kfd::{
         self, AcquireVm, AcquireVmResult, Kfd1_18,
         apertures::AperturesNew,
@@ -13,7 +15,7 @@ use std::os::fd::{AsFd, AsRawFd, RawFd};
 
 fn main() {
     let kfd = Kfd1_18::open().unwrap();
-    let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm = RawRenderNode::open(128).unwrap();
     let gpus = kfd.all_apertures().unwrap();
     let gpu = gpus[0];
     let AcquireVmResult::Ok(kfd) = kfd.acquire_vm(&gpu, &drm) else {

@@ -1,11 +1,13 @@
+#[path = "common/helpers.rs"] mod helpers;
 use std::os::fd::{AsFd, AsRawFd};
 use std::process::exit;
 
-use amdgpu_linux_api::drm::{AmdgpuDrmPrimary3_64, ioctl};
+use helpers::RawPrimaryNode;
+use amdgpu_linux_api::drm::{ioctl};
 
 fn main() {
     // 1. Create a new primary DRM client by opening /dev/dri/card1
-    let drm = AmdgpuDrmPrimary3_64::open(1).unwrap();
+    let drm = RawPrimaryNode::open(1).unwrap();
     let fd = drm.as_fd().as_raw_fd();
     println!("Parent: opened /dev/dri/card1, fd = {}", fd);
 

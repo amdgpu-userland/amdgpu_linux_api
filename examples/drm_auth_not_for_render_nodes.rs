@@ -1,9 +1,11 @@
+#[path = "common/helpers.rs"] mod helpers;
 use std::os::fd::{AsFd, AsRawFd};
 
-use amdgpu_linux_api::drm::{AmdgpuDrmRender3_64, ioctl};
+use helpers::RawRenderNode;
+use amdgpu_linux_api::drm::{ioctl};
 
 fn main() {
-    let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm = RawRenderNode::open(128).unwrap();
     let _ = unsafe { ioctl::drm::set_master(drm.as_fd().as_raw_fd()) };
     println!(
         "Neither opening a render client nor issuing a set_master ioctl should change authentication status.

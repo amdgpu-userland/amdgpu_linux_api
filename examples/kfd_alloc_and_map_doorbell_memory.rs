@@ -1,4 +1,5 @@
-use amdgpu_linux_api::drm::AmdgpuDrmRender3_64;
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::kfd::AcquireVm;
 use amdgpu_linux_api::kfd::AcquireVmResult;
 use amdgpu_linux_api::kfd::Kfd1_18;
@@ -11,7 +12,7 @@ use std::os::fd::AsRawFd;
 fn main() {
     let kfd = Kfd1_18::open().unwrap();
     let apertures = kfd.all_apertures().unwrap();
-    let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm = RawRenderNode::open(128).unwrap();
     let kfd = match kfd.acquire_vm(&apertures[0], &drm) {
         AcquireVmResult::Ok(x) => x,
         _ => panic!(),

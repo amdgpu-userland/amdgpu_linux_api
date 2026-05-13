@@ -1,7 +1,9 @@
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use std::{sync::atomic::AtomicBool, time::Duration};
 
 use amdgpu_linux_api::{
-    drm::AmdgpuDrmRender3_64,
+     
     kfd::{AcquireVm, Kfd1_18, apertures::AperturesNew, mmap::RemapMmio},
 };
 use nix::sys::signal::*;
@@ -18,7 +20,7 @@ fn main() {
     let devs = kfd.all_apertures().unwrap();
     let mut mmio = kfd.mmio(&devs[0]);
     let handler = SigHandler::Handler(sig_handler);
-    let drm_file = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm_file = RawRenderNode::open(128).unwrap();
     let kfd = kfd.acquire_vm(&devs[0], &drm_file);
 
     let sa = SigAction::new(handler, SaFlags::empty(), SigSet::all());

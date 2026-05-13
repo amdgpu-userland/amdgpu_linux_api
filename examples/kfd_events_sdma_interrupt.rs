@@ -1,6 +1,8 @@
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::{
     SIGNAL_PAGES_SIZE,
-    drm::AmdgpuDrmRender3_64,
+     
     kfd::{
         self, AcquireVm, Kfd1_18,
         apertures::AperturesNew,
@@ -53,7 +55,7 @@ fn alloc_and_map_userptr(
 
 fn main() {
     let kfd = Kfd1_18::open().unwrap();
-    let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm = RawRenderNode::open(128).unwrap();
     let devs = kfd.all_apertures().unwrap();
     let dev = &devs[0];
 

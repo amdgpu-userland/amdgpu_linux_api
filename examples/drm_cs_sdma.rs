@@ -1,7 +1,9 @@
 #![feature(ptr_cast_array)]
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::{
     drm::{
-        AmdgpuDrmRender3_64, GemHandle,
+        GemHandle,
         ioctl::{
             self,
             amd::{
@@ -17,7 +19,6 @@ use std::os::fd::AsFd;
 use std::{
     ffi::c_void,
     os::fd::{AsRawFd, RawFd},
-    time::Duration,
 };
 
 fn alloc_and_map_vram(fd: RawFd, size: usize) -> (GemHandle, *mut c_void) {
@@ -110,7 +111,7 @@ fn create_bo_list(fd: RawFd, list: &[GemHandle]) -> BoListHandle {
 }
 
 fn main() {
-    let drm_file = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm_file = RawRenderNode::open(128).unwrap();
     let fd = drm_file.as_fd().as_raw_fd();
 
     const GEM_SIZE: usize = 0x1_000;

@@ -1,4 +1,5 @@
-use amdgpu_linux_api::drm::AmdgpuDrmRender3_64;
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::kfd::apertures::AperturesNew;
 use amdgpu_linux_api::kfd::ioctl::{
     AllocMemoryOfGpuArgs, CreateEventArgs, alloc_domain, alloc_flags, alloc_memory_of_gpu,
@@ -10,7 +11,7 @@ use std::os::fd::AsRawFd;
 
 fn main() {
     let kfd = Kfd1_18::open().unwrap();
-    let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm = RawRenderNode::open(128).unwrap();
     let devs = kfd.all_apertures().unwrap();
     let dev = &devs[0];
 

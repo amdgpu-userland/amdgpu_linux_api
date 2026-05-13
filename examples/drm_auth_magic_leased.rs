@@ -1,4 +1,3 @@
-use amdgpu_linux_api::drm::auth::WasMaster;
 use amdgpu_linux_api::drm::ioctl;
 use std::fs::OpenOptions;
 use std::os::fd::FromRawFd;

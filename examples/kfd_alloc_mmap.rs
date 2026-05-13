@@ -1,5 +1,7 @@
+#[path = "common/helpers.rs"] mod helpers;
+use helpers::RawRenderNode;
 use amdgpu_linux_api::{
-    drm::AmdgpuDrmRender3_64,
+     
     kfd::{
         AcquireVm, Kfd1_18,
         apertures::AperturesNew,
@@ -10,7 +12,7 @@ use std::os::fd::{AsFd, AsRawFd};
 
 fn main() {
     let kfd = Kfd1_18::open().unwrap();
-    let drm = AmdgpuDrmRender3_64::open(128).unwrap();
+    let drm = RawRenderNode::open(128).unwrap();
     let devs = kfd.all_apertures().unwrap();
     let dev = &devs[0];
 
