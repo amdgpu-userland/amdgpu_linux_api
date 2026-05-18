@@ -159,10 +159,7 @@ impl<Driver> PrimaryClient<Unknown, Local, Exclusive, Driver> {
         match set_master(self.file.as_fd()) {
             Ok(_) => Ok(PrimaryClient {
                 _auth: Master,
-                _origin: PhantomData,
-                _access: PhantomData,
-                file: self.file,
-                _driver_specific: self._driver_specific,
+                ..self
             }),
             Err(SetMasterError::OtherMasterAlreadySet) => {
                 Err(RootlessLocalSetMasterError::OtherMasterAlreadySet(self))
@@ -176,11 +173,8 @@ impl<Driver> PrimaryClient<Unknown, Local, Exclusive, Driver> {
             Err(SetMasterError::RequiresRootPermissions) => match self.verify_authenticated() {
                 Ok(res) => Err(RootlessLocalSetMasterError::Authenticated(res)),
                 Err(res) => Err(RootlessLocalSetMasterError::Regular(PrimaryClient {
-                    file: res.file,
                     _auth: Regular,
-                    _origin: PhantomData,
-                    _access: PhantomData,
-                    _driver_specific: res._driver_specific,
+                    ..res
                 })),
             },
         }
@@ -194,10 +188,7 @@ impl<Driver> PrimaryClient<Unknown, Local, Exclusive, Driver> {
         match set_master(self.file.as_fd()) {
             Ok(_) => Ok(PrimaryClient {
                 _auth: Master,
-                _origin: PhantomData,
-                _access: PhantomData,
-                file: self.file,
-                _driver_specific: self._driver_specific,
+                ..self
             }),
             Err(SetMasterError::OtherMasterAlreadySet) => Err((self, OtherMasterAlreadySet)),
             Err(SetMasterError::LeassedClientNotAllowed) => {
@@ -224,15 +215,12 @@ impl<Driver> PrimaryClient<Unknown, Foreign, Exclusive, Driver> {
     pub fn set_master(
         self,
         _token: &ActiveCaps<CAP_SYS_ADMIN>,
-    ) -> Result<PrimaryClient<Master, Local, Exclusive, Driver>, ForeignSetMasterError<Driver>>
+    ) -> Result<PrimaryClient<Master, Foreign, Exclusive, Driver>, ForeignSetMasterError<Driver>>
     {
         match set_master(self.file.as_fd()) {
             Ok(_) => Ok(PrimaryClient {
                 _auth: Master,
-                _origin: PhantomData,
-                _access: PhantomData,
-                file: self.file,
-                _driver_specific: self._driver_specific,
+                ..self
             }),
             Err(SetMasterError::OtherMasterAlreadySet) => {
                 Err(ForeignSetMasterError::OtherMasterAlreadySet(self))
@@ -249,9 +237,7 @@ impl<Driver> PrimaryClient<Unknown, Foreign, Exclusive, Driver> {
                                 // - free this memory if the lease loses master status
                                 _permitted_objects: buffer,
                             },
-                            _origin: PhantomData,
-                            _access: PhantomData,
-                            _driver_specific: self._driver_specific,
+                            ..self
                         }))
                     }
                     Err(GetLeaseError::DriverDoesntSupport) => unreachable!(
@@ -278,10 +264,7 @@ impl<Driver> PrimaryClient<WasMaster, Local, Exclusive, Driver> {
         match set_master(self.file.as_fd()) {
             Ok(_) => Ok(PrimaryClient {
                 _auth: Master,
-                _origin: PhantomData,
-                _access: PhantomData,
-                file: self.file,
-                _driver_specific: self._driver_specific,
+                ..self
             }),
             Err(SetMasterError::OtherMasterAlreadySet) => Err((self, OtherMasterAlreadySet)),
             Err(SetMasterError::LeassedClientNotAllowed) => {
@@ -300,11 +283,8 @@ impl<Driver> PrimaryClient<Master, Local, Exclusive, Driver> {
     pub fn drop_master(mut self) -> PrimaryClient<WasMaster, Local, Exclusive, Driver> {
         match drop_master(&mut self.file) {
             Ok(_) => PrimaryClient {
-                file: self.file,
-                _driver_specific: self._driver_specific,
                 _auth: WasMaster,
-                _origin: PhantomData,
-                _access: PhantomData,
+                ..self
             },
             Err(DropMasterError::RootAccessRequired) => {
                 panic!(
@@ -313,11 +293,8 @@ impl<Driver> PrimaryClient<Master, Local, Exclusive, Driver> {
             }
             Err(DropMasterError::NotCurrentMasterOrThereIsNoMasterOrItIsALeassedClient) => {
                 PrimaryClient {
-                    file: self.file,
-                    _driver_specific: self._driver_specific,
                     _auth: WasMaster,
-                    _origin: PhantomData,
-                    _access: PhantomData,
+                    ..self
                 }
             }
         }
@@ -332,22 +309,16 @@ impl<Driver> PrimaryClient<Master, Foreign, Exclusive, Driver> {
     ) -> PrimaryClient<WasMaster, Foreign, Exclusive, Driver> {
         match drop_master(&mut self.file) {
             Ok(_) => PrimaryClient {
-                file: self.file,
-                _driver_specific: self._driver_specific,
                 _auth: WasMaster,
-                _origin: PhantomData,
-                _access: PhantomData,
+                ..self
             },
             Err(DropMasterError::RootAccessRequired) => {
                 panic!("We are supposed to have root access, via token");
             }
             Err(DropMasterError::NotCurrentMasterOrThereIsNoMasterOrItIsALeassedClient) => {
                 PrimaryClient {
-                    file: self.file,
-                    _driver_specific: self._driver_specific,
                     _auth: WasMaster,
-                    _origin: PhantomData,
-                    _access: PhantomData,
+                    ..self
                 }
             }
         }
@@ -367,11 +338,8 @@ impl<O, A, D> PrimaryClient<Unknown, O, A, D> {
             return Err(self);
         }
         Ok(PrimaryClient {
-            file: self.file,
-            _driver_specific: self._driver_specific,
             _auth: Authenticated,
-            _origin: PhantomData,
-            _access: PhantomData,
+            ..self
         })
     }
 }
@@ -440,6 +408,7 @@ impl<Origin, Driver: Modeset + Default> PrimaryClient<Master, Origin, Exclusive,
             _origin: PhantomData,
             _access: PhantomData,
             _driver_specific: Driver::default(),
+            drm_device: self.drm_device.clone(),
         };
 
         f(lease);

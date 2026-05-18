@@ -1,6 +1,6 @@
 use std::os::fd::RawFd;
 
-use crate::drm::GemHandle;
+use crate::drm::{FlinkName, GemHandle};
 
 /// Id of a CRTC, connector or plane
 pub type ObjectId = u32;
@@ -46,6 +46,31 @@ assert_layout!(Client, size = 40, align = 8);
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, Copy)]
+pub struct GemClose {
+    pub handle: GemHandle,
+    pub pad: u32,
+}
+assert_layout!(GemClose, size = 8, align = 4);
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GemFlink {
+    pub handle: GemHandle,
+    pub name: FlinkName,
+}
+assert_layout!(GemFlink, size = 8, align = 4);
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GemOpen {
+    pub name: FlinkName,
+    pub handle: GemHandle,
+    pub size: usize,
+}
+assert_layout!(GemOpen, size = 16, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct GetCap {
     pub capability: u64,
     pub value: u64,
@@ -62,6 +87,48 @@ pub struct PrimeHandle {
     pub fd: RawFd,
 }
 assert_layout!(PrimeHandle, size = 12, align = 4);
+
+pub mod vblank {
+    pub type VblankSeqType = u32;
+
+    pub const ABSOLUTE: VblankSeqType = 0x0;
+    pub const RELATIVE: VblankSeqType = 0x1;
+    pub const HIGH_CRTC_MASK: VblankSeqType = 0x0000_003e;
+    pub const EVENT: VblankSeqType = 0x0400_0000;
+    pub const FLIP: VblankSeqType = 0x0800_0000;
+    pub const NEXTONMISS: VblankSeqType = 0x1000_0000;
+    pub const SECONDARY: VblankSeqType = 0x2000_0000;
+    pub const SIGNAL: VblankSeqType = 0x4000_0000;
+
+    pub const HIGH_CRTC_SHIFT: VblankSeqType = 1;
+    pub const TYPES_MASK: VblankSeqType = ABSOLUTE | RELATIVE;
+    pub const FLAGS_MASK: VblankSeqType = EVENT | SIGNAL | SECONDARY | NEXTONMISS;
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct WaitVblankRequest {
+    pub type_: vblank::VblankSeqType,
+    pub sequence: u32,
+    pub signal: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct WaitVblankReply {
+    pub type_: vblank::VblankSeqType,
+    pub sequence: u32,
+    pub tval_sec: u64,
+    pub tval_usec: u64,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union WaitVblank {
+    pub request: WaitVblankRequest,
+    pub reply: WaitVblankReply,
+}
+assert_layout!(WaitVblank, size = 24, align = 8);
 
 /// struct drm_mode_create_lease - Create lease
 ///

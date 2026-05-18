@@ -1,15 +1,19 @@
+use std::os::fd::BorrowedFd;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 
 pub type GemHandle = u32;
 pub type SyncobjHandle = u32;
+pub type FlinkName = u32;
 
 pub mod amdgpu;
 pub mod auth;
 pub mod driver_capabilities;
+pub mod gem;
 mod hidden;
 pub mod ioctl;
 pub mod lease;
 mod set_client_name;
+pub mod sysfs;
 
 use hidden::open_file_check_version;
 use hidden::verify_if_drm_fd_is_authenticated;
@@ -17,6 +21,8 @@ use hidden::verify_if_drm_fd_is_authenticated;
 pub use set_client_name::ClientName;
 pub use set_client_name::ClientNameError;
 pub use set_client_name::set_client_name;
+
+use crate::drm::sysfs::DrmDeviceIdentity;
 
 /// Any /dev/dri/* file
 ///
@@ -46,6 +52,8 @@ pub unsafe trait DrmRenderFile: DrmFile {}
 /// Must be a drm file handled by amdgpu driver
 pub unsafe trait AmdgpuDrmFile: DrmFile {}
 
+pub struct DrmDevice {}
+
 pub struct PrimaryClient<
     Auth = auth::Unknown,
     Origin = auth::Local,
@@ -58,10 +66,12 @@ pub struct PrimaryClient<
     _origin: std::marker::PhantomData<Origin>,
     _access: std::marker::PhantomData<Access>,
     _driver_specific: Driver,
+    /// Cached canonicalized path to system device
+    drm_device: DrmDeviceIdentity,
 }
 
 pub struct RenderClient<Driver> {
-    _file: OwnedFd,
+    file: OwnedFd,
     _driver_specific: Driver,
 }
 
@@ -71,6 +81,12 @@ pub enum OpenError {
     DriverVersionTooOld,
     DifferentDriverFromAmdgpu,
     Unexpected(libc::c_int),
+}
+
+impl<Auth, Origin, Access, Driver> AsFd for PrimaryClient<Auth, Origin, Access, Driver> {
+    fn as_fd(&self) -> BorrowedFd<'_> {
+        self.file.as_fd()
+    }
 }
 
 /// Creating GEM objects

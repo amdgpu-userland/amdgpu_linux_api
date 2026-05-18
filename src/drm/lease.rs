@@ -1,4 +1,4 @@
-use crate::drm::{PrimaryClient, auth::Leased, ioctl::drm as ioctl};
+use crate::drm::ioctl::drm as ioctl;
 use std::os::fd::{AsRawFd, BorrowedFd};
 
 pub(crate) enum GetLeaseError {

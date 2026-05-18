@@ -40,6 +40,36 @@ define_drm_ioctl!(
     /// # SAFETY
     /// todo
     get_client, Client, 0x05, WR);
+
+define_drm_ioctl!(
+    /// Destroy the gem handle, if the underlying object has no more references it gets released
+    ///
+    /// # SAFETY
+    /// * Available for all clients
+    /// * Driver must support GEM subsystem or EOPNOTSUP
+    /// * The handle must exist for this client or EINVAL
+    gem_close, GemClose, 0x09, W);
+define_drm_ioctl!(
+    /// Create a uniqe token (name) for this device which can be used by other clients to import this
+    /// object.
+    ///
+    /// # SAFETY
+    /// * Client must be primary and authenticated or EACCES
+    /// * Driver must support GEM subsystem or EOPNOTSUP
+    /// * Provided handle must be valid or ENOENT
+    /// * There must be a free flink available or ENOSPC
+    gem_flink, GemFlink, 0x0a, WR);
+define_drm_ioctl!(
+    /// Imports a gem object via provided flink name.
+    ///
+    /// # SAFETY
+    /// * Client must be primary and authenticated or EACCES
+    /// * Driver must support GEM subsystem or EOPNOTSUP
+    /// * Provided flink must be valid or ENOENT
+    /// * There must be a free handle to use or ENOSPC
+    /// * Driver can customize this function so also the return values
+    /// * There must be enough space for internal allocations or ENOMEM
+    gem_open, GemOpen, 0x0b, WR);
 define_drm_ioctl!(
     ///
     /// # SAFETY
@@ -66,6 +96,19 @@ define_drm_ioctl!(
     /// # SAFETY
     /// todo
     prime_fd_to_handle, PrimeHandle, 0x2e, WR);
+
+define_drm_ioctl!(
+    /// # SAFETY
+    /// Must be master, or EACCES
+    /// Driver must initialize at least one CRTC, or EOPNOTSUP
+    /// Request must not have SIGNAL set, or EINVAL
+    /// Request must not have bits outside known, or EINVAL
+    /// Provided crtc index must exist for device, or EINVAL
+    /// If it failed to acquire vblank counter EINVAL
+    /// Driver must support modesetting or EINVAL
+    ///
+    /// Driver can customize vblank behaviour and so the return values
+    wait_vblank, WaitVblank, 0x3a, WR);
 
 define_drm_ioctl!(
     /// It does validate objects

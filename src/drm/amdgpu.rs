@@ -11,6 +11,7 @@ use crate::{
         PrimaryClient,
         auth::{Authenticated, Exclusive, Local, Unknown},
         ioctl::{self},
+        sysfs::DrmDeviceIdentity,
     },
 };
 
@@ -123,12 +124,14 @@ pub fn try_open_primary_with_cap_sys_admin(
 ) -> PrimaryClient<Authenticated, Local, Exclusive, Amdgpu> {
     let fd = try_open_blocking(num).unwrap();
     let _ = token;
+    let drm_device = DrmDeviceIdentity::from_fd(&fd).expect("It's ok");
     PrimaryClient {
         file: fd,
         _auth: Authenticated,
         _origin: PhantomData,
         _access: PhantomData,
         _driver_specific: Amdgpu {},
+        drm_device,
     }
 }
 

@@ -102,5 +102,16 @@ pub const CAP_SYNCOBJ_TIMELINE: Cap = 0x14;
 /// commits.
 pub const CAP_ATOMIC_ASYNC_PAGE_FLIP: Cap = 0x15;
 
+/// See include/drm/drm_drv.h for enum drm_driver_feature
+
 /// Driver capability for modesetting
 pub trait Modeset {}
+
+/// Driver capability for working with GEM memory manager
+pub trait Gem {}
+
+/// Driver capability for render clients
+pub trait Render {}
+
+/// Driver capability for virual address bindings of gem objects
+pub trait GemGpuVA {}
