@@ -87,7 +87,7 @@ fn two_u32_to_u64_little_endian(hi: u32, lo: u32) -> u64 {
     u64::from(hi) << 32 | u64::from(lo)
 }
 
-pub fn has_all_caps(current_caps: CapSet, desired_caps: CapSet) -> bool {
+pub const fn has_all_caps(current_caps: CapSet, desired_caps: CapSet) -> bool {
     desired_caps == (desired_caps & current_caps)
 }
 
@@ -96,6 +96,44 @@ pub struct ActiveCaps<const CAPS: CapSet>(std::marker::PhantomData<*mut ()>);
 
 /// Token "proving" the **current** thread does not have specified capabilities in effective set
 pub struct DisabledCaps<const CAPS: CapSet>(std::marker::PhantomData<*mut ()>);
+
+impl<const CAPS: CapSet> ActiveCaps<CAPS> {
+    /// Reborrows this token as proof for a subset of the active capabilities.
+    ///
+    /// This lets callers obtain several narrower capability tokens from one
+    /// wider token without issuing another `capget`/`capset` sequence.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `SUBSET` contains a capability not present in `CAPS`.
+    pub const fn subset<const SUBSET: CapSet>(&self) -> &ActiveCaps<SUBSET> {
+        assert!(has_all_caps(CAPS, SUBSET));
+
+        // ActiveCaps is a zero-sized proof token. Reborrow with the same
+        // lifetime while changing only the const parameter after proving that
+        // the requested token is narrower than the original one.
+        unsafe { &*(self as *const Self).cast::<ActiveCaps<SUBSET>>() }
+    }
+}
+
+impl<const CAPS: CapSet> DisabledCaps<CAPS> {
+    /// Reborrows this token as proof for a subset of the disabled capabilities.
+    ///
+    /// This lets callers obtain several narrower capability tokens from one
+    /// wider token without issuing another `capget`/`capset` sequence.
+    ///
+    /// # Panics
+    ///
+    /// Panics when `SUBSET` contains a capability not present in `CAPS`.
+    pub const fn subset<const SUBSET: CapSet>(&self) -> &DisabledCaps<SUBSET> {
+        assert!(has_all_caps(CAPS, SUBSET));
+
+        // DisabledCaps is a zero-sized proof token. Reborrow with the same
+        // lifetime while changing only the const parameter after proving that
+        // the requested token is narrower than the original one.
+        unsafe { &*(self as *const Self).cast::<DisabledCaps<SUBSET>>() }
+    }
+}
 
 impl ThreadCapabilities {
     pub fn acquire() -> Result<Self, ThreadCapabilitiesAlreadyAcquired> {
@@ -404,3 +442,43 @@ define_cap!(
     40,
     "Allow checkpoint/restore operations."
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TWO_CAPS: CapSet = CAP_SYS_ADMIN | CAP_NET_ADMIN;
+
+    fn needs_active_sys_admin(_: &ActiveCaps<CAP_SYS_ADMIN>) {}
+    fn needs_disabled_sys_admin(_: &DisabledCaps<CAP_SYS_ADMIN>) {}
+
+    #[test]
+    fn active_caps_can_be_reborrowed_as_subset() {
+        let caps = ActiveCaps::<TWO_CAPS>(PhantomData);
+
+        needs_active_sys_admin(caps.subset::<CAP_SYS_ADMIN>());
+    }
+
+    #[test]
+    fn disabled_caps_can_be_reborrowed_as_subset() {
+        let caps = DisabledCaps::<TWO_CAPS>(PhantomData);
+
+        needs_disabled_sys_admin(caps.subset::<CAP_SYS_ADMIN>());
+    }
+
+    #[test]
+    #[should_panic]
+    fn active_caps_reject_non_subset() {
+        let caps = ActiveCaps::<CAP_SYS_ADMIN>(PhantomData);
+
+        let _ = caps.subset::<TWO_CAPS>();
+    }
+
+    #[test]
+    #[should_panic]
+    fn disabled_caps_reject_non_subset() {
+        let caps = DisabledCaps::<CAP_SYS_ADMIN>(PhantomData);
+
+        let _ = caps.subset::<TWO_CAPS>();
+    }
+}
