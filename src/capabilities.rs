@@ -1,5 +1,147 @@
+//! Thread-local Linux capability management.
+//!
+//! Linux capabilities split privileged operations into individual bits such as
+//! [`CAP_SYS_ADMIN`]. Each thread has effective, permitted, and inheritable
+//! capability sets:
+//!
+//! - **effective** capabilities are active right now and are checked by the
+//!   kernel for privileged operations;
+//! - **permitted** capabilities are available to be raised into the effective
+//!   set;
+//! - **inheritable** capabilities control what can survive `execve`.
+//!
+//! Linux also has **ambient** and **bounding** capability sets. This module
+//! intentionally leaves them out and focuses only on the capability state
+//! exposed through `capget(2)` and `capset(2)`: effective, permitted, and
+//! inheritable capabilities.
+//!
+//! This module gives you a scoped way to temporarily change the current
+//! thread's effective capability set. It is designed around proof tokens:
+//! [`ActiveCaps`] proves that a capability is effective inside a closure, and
+//! [`DisabledCaps`] proves that it is not effective inside a closure. Other
+//! APIs in this crate can require those tokens instead of silently depending on
+//! ambient privileges.
+//!
+//! # Basic flow
+//!
+//! Acquire a [`ThreadCapabilities`] handle for the current thread, optionally
+//! clear the effective set, and then raise only the capabilities needed for a
+//! critical section.
+//!
+//! ```no_run
+//! use amdgpu_linux_api::capabilities::{
+//!     ActiveCaps, CAP_SYS_ADMIN, ThreadCapabilities,
+//! };
+//!
+//! fn operation_requiring_sys_admin(_token: &ActiveCaps<CAP_SYS_ADMIN>) {
+//!     // Call an API that requires CAP_SYS_ADMIN here.
+//! }
+//!
+//! # fn main() -> Result<(), amdgpu_linux_api::capabilities::CapsetError> {
+//! let mut caps = ThreadCapabilities::acquire()
+//!     .expect("capabilities handle already acquired on this thread");
+//!
+//! // Keep ambient privilege low. CAP_SYS_ADMIN can still be raised later only
+//! // if it remains in the permitted set.
+//! caps.clear_effective();
+//!
+//! caps.with_effective::<CAP_SYS_ADMIN, _, _, _>(
+//!     |sys_admin, ()| operation_requiring_sys_admin(sys_admin),
+//!     (),
+//! )?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! `with_effective` only raises capabilities that are already in the permitted
+//! set. If the capability is missing from the permitted set, it returns
+//! [`CapsetError::PermissionDenied`].
+//!
+//! # Proving a capability is disabled
+//!
+//! Some DRM operations behave differently for privileged and unprivileged
+//! callers. Use [`ThreadCapabilities::without_effective`] when you need to run a
+//! section with a capability temporarily removed.
+//!
+//! ```no_run
+//! use amdgpu_linux_api::capabilities::{
+//!     CAP_SYS_ADMIN, DisabledCaps, ThreadCapabilities,
+//! };
+//!
+//! fn rootless_path(_token: &DisabledCaps<CAP_SYS_ADMIN>) {
+//!     // Call an API that must observe the thread without CAP_SYS_ADMIN.
+//! }
+//!
+//! # fn main() -> Result<(), amdgpu_linux_api::capabilities::CapsetError> {
+//! let mut caps = ThreadCapabilities::acquire()
+//!     .expect("capabilities handle already acquired on this thread");
+//!
+//! caps.without_effective::<CAP_SYS_ADMIN, _, _, _>(
+//!     |no_sys_admin, ()| rootless_path(no_sys_admin),
+//!     (),
+//! )?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! # Multiple capabilities and subsets
+//!
+//! Capability constants are bitmasks and can be ORed together. A wider token can
+//! be reborrowed as a narrower token with [`ActiveCaps::subset`] or
+//! [`DisabledCaps::subset`].
+//!
+//! ```no_run
+//! use amdgpu_linux_api::capabilities::{
+//!     ActiveCaps, CAP_NET_ADMIN, CAP_SYS_ADMIN, CapSet,
+//! };
+//!
+//! const ADMIN_CAPS: CapSet = CAP_SYS_ADMIN | CAP_NET_ADMIN;
+//!
+//! fn needs_sys_admin(_token: &ActiveCaps<CAP_SYS_ADMIN>) {}
+//!
+//! fn use_wide_token(token: &ActiveCaps<ADMIN_CAPS>) {
+//!     needs_sys_admin(token.subset::<CAP_SYS_ADMIN>());
+//! }
+//! ```
+//!
+//! # Ownership and concurrency
+//!
+//! Only one [`ThreadCapabilities`] handle can be acquired per thread at a time.
+//! This prevents two pieces of code from restoring stale capability snapshots
+//! over each other. Drop the handle before acquiring another one on the same
+//! thread.
+//!
+//! The handle and proof tokens are intentionally thread-local. Do not use a
+//! token as proof for another thread's capability state.
+//!
+//! # External capability changes
+//!
+//! Linux permits capability state to be changed outside this handle's control,
+//! for example by another thread in the same process or by a sufficiently
+//! privileged external process. [`ThreadCapabilities`] keeps a snapshot taken
+//! at acquisition time and updates that snapshot only after changes made
+//! through this module.
+//!
+//! Scoped methods such as [`ThreadCapabilities::with_effective`] and
+//! [`ThreadCapabilities::without_effective`] assume that nothing else mutates
+//! the current thread's capability sets while the closure is running. If another
+//! actor changes permitted capabilities behind this module's back, restoration
+//! can fail and the method may panic rather than silently continue with a stale
+//! model of the thread's privileges.
+//!
+//! # Irreversible operations
+//!
+//! Clearing the effective set is reversible as long as the capability remains in
+//! the permitted set. Clearing the permitted set with
+//! [`ThreadCapabilities::clear_permitted`] is normally irreversible for the
+//! current process, so do that only after all privileged work is complete.
+
 use std::{cell::Cell, marker::PhantomData, mem::MaybeUninit, rc::Rc};
 
+/// Bitmask of Linux capabilities.
+///
+/// Each `CAP_*` constant in this module occupies one bit. Combine them with
+/// bitwise OR when an operation needs more than one capability.
 pub type CapSet = u64;
 
 #[derive(Debug)]
@@ -22,6 +164,15 @@ struct CapUserData {
     inheritable_s1: u32,
 }
 
+/// Current thread capability snapshot and scoped mutation handle.
+///
+/// The handle is acquired from the kernel with `capget(2)` and keeps an
+/// internal copy of the current thread's capability sets. Mutating methods call
+/// `capset(2)` and update that copy on success.
+///
+/// Only one handle may be active per thread. This avoids stale restore problems
+/// when nested or unrelated code tries to change the same thread's capability
+/// state.
 #[derive(Debug)]
 pub struct ThreadCapabilities {
     data: CapUserData,
@@ -35,6 +186,8 @@ thread_local! {
     static THREAD_CAPABILITIES_ACQUIRED: Cell<bool> = const { Cell::new(false) };
 }
 
+/// Error returned when a [`ThreadCapabilities`] handle is already active for
+/// the current thread.
 #[derive(Debug)]
 pub struct ThreadCapabilitiesAlreadyAcquired;
 
@@ -51,13 +204,23 @@ fn raw_capget() -> CapUserData {
     }
 }
 
+/// Acquires a [`ThreadCapabilities`] handle or panics if this thread already has
+/// one.
+///
+/// Prefer [`ThreadCapabilities::acquire`] in library code so callers can decide
+/// how to handle acquisition conflicts.
 pub fn capget_or_panic() -> ThreadCapabilities {
     ThreadCapabilities::acquire().expect("ThreadCapabilities already acquired for this thread")
 }
 
+/// Error returned by operations that modify the current thread's capability
+/// sets.
 #[derive(Debug)]
 pub enum CapsetError {
+    /// The kernel rejected the supplied capability data.
     InvalidArguments,
+    /// A requested capability cannot be raised because it is not in the
+    /// permitted set, or the kernel rejected the change for permissions reasons.
     PermissionDenied,
 }
 
@@ -87,14 +250,23 @@ fn two_u32_to_u64_little_endian(hi: u32, lo: u32) -> u64 {
     u64::from(hi) << 32 | u64::from(lo)
 }
 
+/// Returns true when `current_caps` contains every bit from `desired_caps`.
 pub const fn has_all_caps(current_caps: CapSet, desired_caps: CapSet) -> bool {
     desired_caps == (desired_caps & current_caps)
 }
 
-/// Token "proving" the **current** thread has specified capabilities in effective set
+/// Token proving the **current** thread has `CAPS` in its effective set.
+///
+/// Values of this type are created by [`ThreadCapabilities::with_effective`].
+/// APIs can accept `&ActiveCaps<CAP_SYS_ADMIN>` or another const capability
+/// mask to make their privilege requirement explicit.
 pub struct ActiveCaps<const CAPS: CapSet>(std::marker::PhantomData<*mut ()>);
 
-/// Token "proving" the **current** thread does not have specified capabilities in effective set
+/// Token proving the **current** thread does not have `CAPS` in its effective
+/// set.
+///
+/// Values of this type are created by [`ThreadCapabilities::without_effective`].
+/// This is useful for paths that need to observe unprivileged kernel behavior.
 pub struct DisabledCaps<const CAPS: CapSet>(std::marker::PhantomData<*mut ()>);
 
 impl<const CAPS: CapSet> ActiveCaps<CAPS> {
@@ -136,6 +308,10 @@ impl<const CAPS: CapSet> DisabledCaps<CAPS> {
 }
 
 impl ThreadCapabilities {
+    /// Acquires a capability handle for the current thread.
+    ///
+    /// Returns [`ThreadCapabilitiesAlreadyAcquired`] if a handle is already
+    /// alive on this thread. Drop the existing handle before acquiring another.
     pub fn acquire() -> Result<Self, ThreadCapabilitiesAlreadyAcquired> {
         THREAD_CAPABILITIES_ACQUIRED.with(|acquired| {
             if acquired.get() {
@@ -151,36 +327,59 @@ impl ThreadCapabilities {
         })
     }
 
+    /// Returns the current snapshot of the effective capability set.
+    ///
+    /// The value is updated by this handle's mutating methods. It will be stale
+    /// if other code changes the current thread's capabilities behind this
+    /// handle.
     pub fn effective(&self) -> CapSet {
         two_u32_to_u64_little_endian(self.data.effective_s1, self.data.effective_s0)
     }
+
+    /// Returns the current snapshot of the permitted capability set.
     pub fn permitted(&self) -> CapSet {
         two_u32_to_u64_little_endian(self.data.permitted_s1, self.data.permitted_s0)
     }
+
+    /// Returns the current snapshot of the inheritable capability set.
     pub fn inheritable(&self) -> CapSet {
         two_u32_to_u64_little_endian(self.data.inheritable_s1, self.data.inheritable_s0)
     }
 
+    /// Returns true when every bit in `caps` is present in the effective set.
     pub fn has_all_effective(&self, caps: CapSet) -> bool {
         has_all_caps(self.effective(), caps)
     }
 
+    /// Returns true when every bit in `caps` is present in the permitted set.
     pub fn has_all_permitted(&self, caps: CapSet) -> bool {
         has_all_caps(self.permitted(), caps)
     }
 
+    /// Returns true when every bit in `caps` is present in the inheritable set.
     pub fn has_all_inherited(&self, caps: CapSet) -> bool {
         has_all_caps(self.inheritable(), caps)
     }
 
-    /// Executes a provided function with provided arguments with all
-    /// specified capabilities in effective set.
+    /// Executes `f` with all `CAPS` present in the effective set.
     ///
-    /// Lowers down capabilities it had to raise after the function.
+    /// Capabilities that were already effective are left unchanged. Missing
+    /// effective capabilities are raised from the permitted set before `f` is
+    /// called, then lowered again afterward.
     ///
-    /// Provided function needs to be extra careful with further modyfing
-    /// current thread's capability set as it may result in unexpected error
-    /// during restoring previous capabilities.
+    /// The closure receives an [`ActiveCaps<CAPS>`] proof token tied to the
+    /// call. Pass that token to APIs that require the capability.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CapsetError::PermissionDenied`] when any requested capability
+    /// is not in the permitted set.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the closure, or other code running on the same thread, mutates
+    /// the permitted set in a way that prevents this method from restoring the
+    /// previous effective set.
     pub fn with_effective<const CAPS: CapSet, Args, Func, Ret>(
         &mut self,
         f: Func,
@@ -222,14 +421,20 @@ impl ThreadCapabilities {
         Ok(res)
     }
 
-    /// Executes a provided function with provided arguments with all
-    /// specified capabilities removed from effective set.
+    /// Executes `f` with all `CAPS` removed from the effective set.
     ///
-    /// Restores capabilities it had to lower after the function.
+    /// Capabilities that are not currently effective are left unchanged.
+    /// Capabilities that are currently effective are lowered before `f` is
+    /// called, then restored afterward.
     ///
-    /// Provided function needs to be extra careful with further modyfing
-    /// current thread's capability set as it may result in unexpected error
-    /// during restoring previous capabilities.
+    /// The closure receives a [`DisabledCaps<CAPS>`] proof token tied to the
+    /// call. Pass that token to APIs that require the capability to be absent.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the closure, or other code running on the same thread, mutates
+    /// the permitted set in a way that prevents this method from restoring the
+    /// previous effective set.
     pub fn without_effective<const CAPS: CapSet, Args, Func, Ret>(
         &mut self,
         f: Func,
@@ -261,7 +466,10 @@ impl ThreadCapabilities {
 
     const LOWERING_CAPS_EXPECT: &str = "Lowering your own capabilities should always work";
 
-    /// It's better to keep effective set clear and raise capabilities for critical sections
+    /// Clears all effective capabilities for the current thread.
+    ///
+    /// This lowers ambient privilege while keeping permitted capabilities
+    /// available for later [`with_effective`](Self::with_effective) calls.
     pub fn clear_effective(&mut self) {
         if self.data.effective_s1 == 0 && self.data.effective_s0 == 0 {
             return;
@@ -273,8 +481,10 @@ impl ThreadCapabilities {
         self.data = cleared;
     }
 
-    /// Be careful once removed from permitted set they can no longer return without special
-    /// circumstances.
+    /// Clears all permitted capabilities for the current thread.
+    ///
+    /// Be careful: once a capability is removed from the permitted set, it
+    /// normally cannot be raised again in the current process.
     pub fn clear_permitted(&mut self) {
         if self.data.permitted_s1 == 0 && self.data.permitted_s0 == 0 {
             return;
@@ -286,6 +496,7 @@ impl ThreadCapabilities {
         self.data = cleared;
     }
 
+    /// Clears all inheritable capabilities for the current thread.
     pub fn clear_inheritable(&mut self) {
         if self.data.inheritable_s1 == 0 && self.data.inheritable_s0 == 0 {
             return;
