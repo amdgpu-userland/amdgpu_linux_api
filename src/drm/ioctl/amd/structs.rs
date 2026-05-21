@@ -2,8 +2,8 @@ use std::mem::MaybeUninit;
 
 use crate::{
     drm::{
-        GemHandle, SyncobjHandle,
         ioctl::amd::{BoListHandle, CsFence, CtxId, FenceHandle, IpInstance, IpRing, SyncobjSeqNo},
+        GemHandle, SyncobjHandle,
     },
     kfd::ioctl::VirtualAddress,
 };
@@ -916,3 +916,346 @@ pub union CsWait {
     pub out: CsWaitOut,
 }
 assert_layout!(CsWait, size = 32, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemWaitIdleIn {
+    /// GEM object handle
+    pub handle: GemHandle,
+    /// For future use, no flags defined so far
+    pub flags: u32,
+    /// CLOCK_MONOTONIC absolute timeout in nanoseconds.
+    pub timeout: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemWaitIdleOut {
+    /// BO status: `0` = idle, `1` = busy.
+    pub status: u32,
+    /// Returned current memory domain.
+    pub domain: u32,
+}
+
+#[repr(C)]
+pub union GemWaitIdle {
+    pub in_: GemWaitIdleIn,
+    pub out: GemWaitIdleOut,
+}
+assert_layout!(GemWaitIdle, size = 16, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct Fence {
+    pub ctx_id: CtxId,
+    pub ip_type: HwIp,
+    pub ip_instance: IpInstance,
+    pub ring: IpRing,
+    pub seq_no: u64,
+}
+assert_layout!(Fence, size = 24, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct WaitFencesIn {
+    /// Pointer to an array of `Fence`.
+    pub fences: *const Fence,
+    pub fence_count: u32,
+    pub wait_all: u32,
+    pub timeout_ns: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct WaitFencesOut {
+    pub status: u32,
+    pub first_signaled: u32,
+}
+
+#[repr(C)]
+pub union WaitFences {
+    pub in_: WaitFencesIn,
+    pub out: WaitFencesOut,
+}
+assert_layout!(WaitFences, size = 24, align = 8);
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum VmOp {
+    ReserveVmid = 1,
+    UnreserveVmid = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct VmIn {
+    pub op: VmOp,
+    /// For future use, no flags defined so far.
+    pub flags: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct VmOut {
+    /// For future use, no flags defined so far.
+    pub flags: u64,
+}
+
+#[repr(C)]
+pub union Vm {
+    pub in_: VmIn,
+    pub out: VmOut,
+}
+assert_layout!(Vm, size = 8, align = 8);
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum SchedOp {
+    ProcessPriorityOverride = 1,
+    ContextPriorityOverride = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct SchedIn {
+    pub op: SchedOp,
+    pub fd: u32,
+    pub priority: CtxPriority,
+    pub ctx_id: CtxId,
+}
+
+#[repr(C)]
+pub union Sched {
+    pub in_: SchedIn,
+}
+assert_layout!(Sched, size = 16, align = 4);
+
+pub mod gem_userptr_flags {
+    pub type Type = u32;
+    pub const READONLY: Type = 1 << 0;
+    pub const ANONONLY: Type = 1 << 1;
+    pub const VALIDATE: Type = 1 << 2;
+    pub const REGISTER: Type = 1 << 3;
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemUserptr {
+    pub addr: u64,
+    pub size: u64,
+    pub flags: gem_userptr_flags::Type,
+    pub handle: GemHandle,
+}
+assert_layout!(GemUserptr, size = 24, align = 8);
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum GemOpOp {
+    GetGemCreateInfo = 0,
+    SetPlacement = 1,
+    GetMappingInfo = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemVmEntry {
+    pub addr: u64,
+    pub size: u64,
+    pub offset: u64,
+    pub flags: u64,
+}
+assert_layout!(GemVmEntry, size = 32, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemOp {
+    pub handle: GemHandle,
+    pub op: GemOpOp,
+    /// Operation-dependent pointer or integer value.
+    ///
+    /// The concrete meaning is selected by `op`:
+    /// - `GetGemCreateInfo`: writable pointer to `GemCreateIn`.
+    /// - `SetPlacement`: integer bitmask of `gem_domain` values, passed by
+    ///   casting the bitmask through this pointer-sized field.
+    /// - `GetMappingInfo`: writable pointer to an array of `GemVmEntry`.
+    pub value: *mut (),
+    /// For mapping info, number of mappings in/out.
+    pub num_entries: u32,
+    pub padding: u32,
+}
+assert_layout!(GemOp, size = 24, align = 8);
+
+pub mod gem_list_handles_flags {
+    pub type Type = u32;
+    pub const IS_IMPORT: Type = 1 << 0;
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemListHandles {
+    /// User pointer to an array of `GemListHandlesEntry`.
+    pub entries: *mut GemListHandlesEntry,
+    /// Size of entries buffer / number of handles in process.
+    pub num_entries: u32,
+    pub padding: u32,
+}
+assert_layout!(GemListHandles, size = 16, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct GemListHandlesEntry {
+    pub gem_handle: GemHandle,
+    pub flags: gem_list_handles_flags::Type,
+    pub size: u64,
+    pub preferred_domains: gem_domain::Type,
+    pub alloc_flags: gem_flags::Type,
+    pub alignment: u64,
+}
+assert_layout!(GemListHandlesEntry, size = 40, align = 8);
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum FenceToHandleWhat {
+    Syncobj = 0,
+    SyncobjFd = 1,
+    SyncFileFd = 2,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FenceToHandleIn {
+    pub fence: Fence,
+    pub what: FenceToHandleWhat,
+    pub pad: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FenceToHandleOut {
+    /// Syncobj handle or file descriptor, depending on `what`.
+    pub handle: u32,
+}
+
+#[repr(C)]
+pub union FenceToHandle {
+    pub in_: FenceToHandleIn,
+    pub out: FenceToHandleOut,
+}
+assert_layout!(FenceToHandle, size = 32, align = 8);
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy)]
+pub enum UserqOp {
+    Create = 1,
+    Free = 2,
+}
+
+pub mod userq_create_flags {
+    pub type Type = u32;
+    pub const QUEUE_PRIORITY_MASK: Type = 0x3;
+    pub const QUEUE_PRIORITY_SHIFT: Type = 0;
+    pub const QUEUE_PRIORITY_NORMAL_LOW: Type = 0;
+    pub const QUEUE_PRIORITY_LOW: Type = 1;
+    pub const QUEUE_PRIORITY_NORMAL_HIGH: Type = 2;
+    pub const QUEUE_PRIORITY_HIGH: Type = 3;
+    pub const QUEUE_SECURE: Type = 1 << 2;
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct UserqIn {
+    pub op: UserqOp,
+    pub queue_id: u32,
+    pub ip_type: HwIp,
+    pub doorbell_handle: GemHandle,
+    pub doorbell_offset: u32,
+    pub flags: userq_create_flags::Type,
+    pub queue_va: VirtualAddress,
+    pub queue_size: u64,
+    pub rptr_va: VirtualAddress,
+    pub wptr_va: VirtualAddress,
+    /// Pointer to engine-specific MQD data.
+    ///
+    /// The concrete pointed-to type is selected by `ip_type` and `mqd_size`,
+    /// for example `UserqMqdGfx11`, `UserqMqdSdmaGfx11`, or
+    /// `UserqMqdComputeGfx11`.
+    pub mqd: *mut (),
+    pub mqd_size: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct UserqOut {
+    pub queue_id: u32,
+    pub _pad: u32,
+}
+
+#[repr(C)]
+pub union Userq {
+    pub in_: UserqIn,
+    pub out: UserqOut,
+}
+assert_layout!(Userq, size = 72, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct UserqMqdGfx11 {
+    pub shadow_va: VirtualAddress,
+    pub csa_va: VirtualAddress,
+}
+assert_layout!(UserqMqdGfx11, size = 16, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct UserqMqdSdmaGfx11 {
+    pub csa_va: VirtualAddress,
+}
+assert_layout!(UserqMqdSdmaGfx11, size = 8, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct UserqMqdComputeGfx11 {
+    pub eop_va: VirtualAddress,
+}
+assert_layout!(UserqMqdComputeGfx11, size = 8, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct UserqSignal {
+    pub queue_id: u32,
+    pub pad: u32,
+    pub syncobj_handles: *const SyncobjHandle,
+    pub num_syncobj_handles: u64,
+    pub bo_read_handles: *const GemHandle,
+    pub bo_write_handles: *const GemHandle,
+    pub num_bo_read_handles: u32,
+    pub num_bo_write_handles: u32,
+}
+assert_layout!(UserqSignal, size = 48, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct UserqFenceInfo {
+    pub va: VirtualAddress,
+    pub value: u64,
+}
+assert_layout!(UserqFenceInfo, size = 16, align = 8);
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct UserqWait {
+    pub waitq_id: u32,
+    pub pad: u32,
+    pub syncobj_handles: *const SyncobjHandle,
+    pub syncobj_timeline_handles: *const SyncobjHandle,
+    pub syncobj_timeline_points: *const SyncobjSeqNo,
+    pub bo_read_handles: *const GemHandle,
+    pub bo_write_handles: *const GemHandle,
+    pub num_syncobj_timeline_handles: u16,
+    pub num_fences: u16,
+    pub num_syncobj_handles: u32,
+    pub num_bo_read_handles: u32,
+    pub num_bo_write_handles: u32,
+    pub out_fences: *mut UserqFenceInfo,
+}
+assert_layout!(UserqWait, size = 72, align = 8);

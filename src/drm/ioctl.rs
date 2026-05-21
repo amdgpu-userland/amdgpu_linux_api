@@ -23,7 +23,7 @@ pub mod amd;
 ///
 /// - [`version`](self::drm::version()) queries driver name, description, and driver version.
 /// - [`get_unique`](self::drm::get_unique()) queries the legacy bus/device unique string.
-/// - [`get_client`](self::drm::get_client()) and [`get_stats`](self::drm::get_stats()) expose legacy client/statistics ioctls.
+/// - [`get_client`](self::drm::get_client()) exposes legacy client information.
 /// - [`set_client_name`](self::drm::set_client_name()) attaches a debug name to the DRM file.
 ///
 /// ## Authentication and master state
