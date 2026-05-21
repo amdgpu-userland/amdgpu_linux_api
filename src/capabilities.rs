@@ -279,7 +279,9 @@ impl<const CAPS: CapSet> ActiveCaps<CAPS> {
     ///
     /// Panics when `SUBSET` contains a capability not present in `CAPS`.
     pub const fn subset<const SUBSET: CapSet>(&self) -> &ActiveCaps<SUBSET> {
-        assert!(has_all_caps(CAPS, SUBSET));
+        const {
+            assert!(has_all_caps(CAPS, SUBSET));
+        }
 
         // ActiveCaps is a zero-sized proof token. Reborrow with the same
         // lifetime while changing only the const parameter after proving that
@@ -298,7 +300,9 @@ impl<const CAPS: CapSet> DisabledCaps<CAPS> {
     ///
     /// Panics when `SUBSET` contains a capability not present in `CAPS`.
     pub const fn subset<const SUBSET: CapSet>(&self) -> &DisabledCaps<SUBSET> {
-        assert!(has_all_caps(CAPS, SUBSET));
+        const {
+            assert!(has_all_caps(CAPS, SUBSET));
+        }
 
         // DisabledCaps is a zero-sized proof token. Reborrow with the same
         // lifetime while changing only the const parameter after proving that
